@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    // Custom claim yerine email kontrolü — ekstra kurulum gerektirmez
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == 'nidasaracc@gmail.com';
+    }
+
+    function isLeagueMember(leagueId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/leagues/$(leagueId)/members/$(request.auth.uid));
+    }
+
+    match /nicknames/{nickname} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow create, update: if isSelf(userId) || isAdmin();
+      allow delete: if false;
+
+      match /predictions/{matchId} {
+        allow read: if isSelf(userId) || isAdmin();
+        allow create: if isSelf(userId);
+        allow update: if isSelf(userId) || isAdmin();
+        allow delete: if false;
+
+        match /answers/{answerId} {
+          allow read: if isSelf(userId) || isAdmin();
+          allow create: if isSelf(userId);
+          allow update: if isSelf(userId) || isAdmin();
+          allow delete: if false;
+        }
+      }
+    }
+
+    // collectionGroup("predictions") sorgusu için zorunlu wildcard kural.
+    // Firestore, collection group sorgularında /{path=**}/koleksiyon/{doc}
+    // formatında bir kural olmadan sorguyu reddeder.
+    match /{path=**}/predictions/{matchId} {
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+    }
+
+    // collectionGroup("members") sorgusu için zorunlu wildcard kural.
+    // settleMatchPredictions içinde üye puanları güncellenirken kullanılır.
+    match /{path=**}/members/{memberId} {
+      allow read: if signedIn();
+      allow update: if isAdmin() || isSelf(memberId);
+    }
+
+    match /leagues/{leagueId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update: if isAdmin() || isLeagueMember(leagueId);
+      allow delete: if isAdmin();
+
+      match /members/{memberId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update: if isAdmin() || isSelf(memberId);
+        allow delete: if isAdmin() || isSelf(memberId);
+      }
+    }
+
+    match /matches/{matchId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+
+      match /questions/{questionId} {
+        allow read: if signedIn();
+        allow write: if isAdmin();
+      }
+
+      match /result/{docId} {
+        allow read: if signedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
