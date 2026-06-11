@@ -4,7 +4,12 @@ type AppConfig = any;
 const config: AppConfig = {
   name: "World Cup Fantasy League",
   slug: "world-cup-fantasy-league",
+
+  // --- Versiyon ---
+  // version: kullanıcıya görünen numara (App Store / Play Store'da gösterilir)
+  // Güncelleme yaptığında artır: 1.0.0 → 1.1.0 (yeni özellik) veya 1.0.1 (bugfix)
   version: "1.0.0",
+
   orientation: "portrait",
   userInterfaceStyle: "light",
   icon: "./assets/icon.png",
@@ -17,6 +22,9 @@ const config: AppConfig = {
     supportsTablet: true,
     bundleIdentifier: "com.nnidasarac.worldcupfantasyleague",
     icon: "./assets/icon.png",
+    // buildNumber: Her App Store submission'da artır (1, 2, 3...)
+    // Aynı version için bile farklı buildNumber gerekir
+    buildNumber: "1",
   },
   android: {
     package: "com.nnidasarac.worldcupfantasyleague",
@@ -24,6 +32,9 @@ const config: AppConfig = {
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#0a1628",
     },
+    // versionCode: Her Play Store submission'da artır (1, 2, 3...)
+    // Tam sayı olmak zorunda
+    versionCode: 1,
   },
   web: {},
   plugins: ["expo-notifications"],
