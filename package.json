@@ -19,6 +19,7 @@
     "expo-linear-gradient": "^56.0.4",
     "expo-notifications": "~56.0.17",
     "expo-status-bar": "~56.0.4",
+    "expo-updates": "~56.0.19",
     "firebase": "^12.14.0",
     "firebase-admin": "^14.0.0",
     "luxon": "^3.7.2",

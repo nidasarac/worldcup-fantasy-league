@@ -8,11 +8,17 @@ const config: AppConfig = {
   // --- Versiyon ---
   // version: kullanıcıya görünen numara (App Store / Play Store'da gösterilir)
   // Güncelleme yaptığında artır: 1.0.0 → 1.1.0 (yeni özellik) veya 1.0.1 (bugfix)
-  version: "1.0.0",
+  version: "1.0.1",
 
   orientation: "portrait",
   userInterfaceStyle: "light",
   icon: "./assets/icon.png",
+  // runtimeVersion: native kod değişmedikçe sabit tut.
+  // Native modül ekler/çıkarırsan veya SDK güncellersen artır.
+  runtimeVersion: "1.0.0",
+  updates: {
+    url: "https://u.expo.dev/5eb24740-20bf-4fdf-92f7-2b1846cc1f8a",
+  },
   splash: {
     image: "./assets/icon.png",
     resizeMode: "contain",
@@ -34,10 +40,10 @@ const config: AppConfig = {
     },
     // versionCode: Her Play Store submission'da artır (1, 2, 3...)
     // Tam sayı olmak zorunda
-    versionCode: 1,
+    versionCode: 2,
   },
   web: {},
-  plugins: ["expo-notifications"],
+  plugins: ["expo-notifications", "expo-updates"],
   extra: {
     apiFootballKey: process.env.API_FOOTBALL_KEY ?? "",
     firebaseApiKey: process.env.FIREBASE_API_KEY ?? "",
