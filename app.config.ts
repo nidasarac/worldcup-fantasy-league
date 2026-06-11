@@ -1,17 +1,29 @@
-import { ExpoConfig } from "expo/config";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AppConfig = any;
 
-const config: ExpoConfig = {
+const config: AppConfig = {
   name: "World Cup Fantasy League",
   slug: "world-cup-fantasy-league",
   version: "1.0.0",
   orientation: "portrait",
   userInterfaceStyle: "light",
+  icon: "./assets/icon.png",
+  splash: {
+    image: "./assets/icon.png",
+    resizeMode: "contain",
+    backgroundColor: "#0a1628",
+  },
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.nnidasarac.worldcupfantasyleague",
+    icon: "./assets/icon.png",
   },
   android: {
     package: "com.nnidasarac.worldcupfantasyleague",
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#0a1628",
+    },
   },
   web: {},
   plugins: ["expo-notifications"],
