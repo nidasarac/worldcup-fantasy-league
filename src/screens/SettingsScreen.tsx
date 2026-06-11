@@ -17,6 +17,7 @@ export function SettingsScreen({
   userEmail,
   worldCupData,
   onRefreshWorldCupData,
+  onLeagueRefresh,
 }: {
   styles: AppStyles;
   theme: ThemePalette;
@@ -25,6 +26,7 @@ export function SettingsScreen({
   userEmail?: string;
   worldCupData?: WorldCupData | null;
   onRefreshWorldCupData: () => void;
+  onLeagueRefresh: () => void;
 }) {
   return (
     <>
@@ -85,6 +87,7 @@ export function SettingsScreen({
           theme={theme}
           worldCupData={worldCupData ?? null}
           onRefreshWorldCupData={onRefreshWorldCupData}
+          onLeagueRefresh={onLeagueRefresh}
         />
       ) : null}
     </>

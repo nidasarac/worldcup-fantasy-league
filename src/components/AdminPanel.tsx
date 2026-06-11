@@ -59,11 +59,13 @@ export function AdminPanel({
   theme,
   worldCupData,
   onRefreshWorldCupData,
+  onLeagueRefresh,
 }: {
   styles: AppStyles;
   theme: ThemePalette;
   worldCupData: WorldCupData | null;
   onRefreshWorldCupData: () => void;
+  onLeagueRefresh: () => void;
 }) {
   const [matchStates, setMatchStates] = useState<Record<string, MatchState>>({});
   const [statusMap, setStatusMap] = useState<Record<string, AdminMatchStatus>>({});
@@ -155,6 +157,7 @@ export function AdminPanel({
         status: "done",
         message: `Tamamlandı. ${settledCount} tahmin puanlandı.`,
       });
+      onLeagueRefresh();
       await loadStatuses();
     } catch (err) {
       setMatchState(game.id, {
@@ -179,6 +182,7 @@ export function AdminPanel({
           ? `${processedMatches} maç işlendi, ${settledCount} tahmin puanlandı.`
           : "İşlenecek bitmiş maç bulunamadı.",
       );
+      if (processedMatches > 0) onLeagueRefresh();
       await loadStatuses();
     } catch (error) {
       setTestNotifMsg(

@@ -204,6 +204,7 @@ function TabContent({
   leaderboardLoading,
   leaderboardError,
   onRefreshWorldCupData,
+  onLeagueRefresh,
 }: {
   activeTab: TabKey;
   styles: ReturnType<typeof createStyles>;
@@ -231,6 +232,7 @@ function TabContent({
   leaderboardLoading: boolean;
   leaderboardError: string | null;
   onRefreshWorldCupData: () => void;
+  onLeagueRefresh: () => void;
 }) {
   const content = useMemo(() => {
     switch (activeTab) {
@@ -281,6 +283,7 @@ function TabContent({
             userEmail={user?.email ?? ""}
             worldCupData={data}
             onRefreshWorldCupData={onRefreshWorldCupData}
+            onLeagueRefresh={onLeagueRefresh}
           />
         ) : profileView === "history" ? (
           <PredictionHistoryScreen
@@ -560,6 +563,7 @@ export default function App() {
             leaderboardLoading={leagueMembers.loading}
             leaderboardError={leagueMembers.error}
             onRefreshWorldCupData={refreshWorldCupData}
+            onLeagueRefresh={refreshLeagueData}
           />
         </ScrollView>
 
