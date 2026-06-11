@@ -64,7 +64,7 @@ export function buildMatchResultFromGame(
     bothTeamsScore: home > 0 && away > 0,
     redCard: false,
     firstGoalTeam: firstGoal ? firstGoal.team : "none",
-    firstGoalMinute: firstGoal?.minute,
+    firstGoalMinute: firstGoal?.minute ?? null,
     halfTimeHomeGoals,
     halfTimeAwayGoals,
     firstHalfGoals: halfTimeHomeGoals + halfTimeAwayGoals,
