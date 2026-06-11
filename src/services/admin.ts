@@ -19,7 +19,6 @@ import {
   getStadiumTimeZone,
   WorldCupData,
 } from "../api/worldCup";
-import { fetchMatchStats } from "../api/apiFootball";
 import { getFirebaseDb } from "../lib/firebase";
 import { setMatchResult } from "./matches";
 import { buildMatchQuestions } from "./questions";
@@ -191,14 +190,7 @@ export async function settleMatchByAdmin(params: {
     await syncMatchQuestionsByAdmin(params);
   }
 
-  const stats = await fetchMatchStats(
-    home.name,
-    away.name,
-    params.game.local_date,
-    getStadiumTimeZone(params.game.stadium_id),
-  );
-
-  const result = buildMatchResultFromGame(params.game, home.name, away.name, stats);
+  const result = buildMatchResultFromGame(params.game, home.name, away.name);
   await setMatchResult(params.game.id, result);
 
   await setDoc(
@@ -206,7 +198,6 @@ export async function settleMatchByAdmin(params: {
     {
       resultSyncedAt: serverTimestamp(),
       hasResult: true,
-      statsFixtureId: stats?.fixtureId ?? null,
     },
     { merge: true },
   );
@@ -216,6 +207,7 @@ export async function settleMatchByAdmin(params: {
     matchResult: result,
     homeTeamName: home.name,
     awayTeamName: away.name,
+    regrade: true,
   });
 
   await setDoc(
@@ -348,6 +340,7 @@ export async function simulateMatchSettlementByAdmin(params: {
     matchResult: result,
     homeTeamName: home.name,
     awayTeamName: away.name,
+    regrade: true,
   });
 
   await setDoc(
@@ -378,6 +371,7 @@ export async function syncFinishedMatchesByAdmin(params: {
     const status = await getAdminMatchStatus(game.id);
     const shouldProcess =
       status.pendingPredictionCount > 0 ||
+      status.settledPredictionCount > 0 ||
       !status.hasResult ||
       status.questionCount === 0;
 

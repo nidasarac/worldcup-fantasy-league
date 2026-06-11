@@ -89,7 +89,7 @@ export function AuthScreen({
           end={{ x: 1, y: 1 }}
           style={styles.authHero}
         >
-          <Text style={styles.authHeroEyebrow}>World Cup 26</Text>
+          <Text style={styles.authHeroEyebrow}>Football Fantasy</Text>
           <Text style={styles.authHeroTitle}>Arkadaş ligin için giriş yap</Text>
           <Text style={styles.authHeroCopy}>
             Tahminlerini kaydetmek, lig oluşturmak ve puan tablona ulaşmak için

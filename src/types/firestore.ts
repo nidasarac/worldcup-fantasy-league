@@ -67,13 +67,7 @@ export type MatchResult = {
   halfTimeHomeGoals?: number;
   halfTimeAwayGoals?: number;
   firstGoalTeam?: string;
-  // API-Football stats
-  homeYellowCards?: number;
-  awayYellowCards?: number;
-  homeRedCards?: number;
-  awayRedCards?: number;
-  homeCorners?: number;
-  awayCorners?: number;
+  firstGoalMinute?: number;
 };
 
 export type Prediction = {

@@ -198,36 +198,24 @@ const QUESTION_POOL: MatchQuestion[] = [
     options: ["Üstü (3+ gol)", "Altı (0–2 gol)"],
     points: 7,
   },
-  // API-Football soruları
+  // Scorer tabanlı sorular
   {
-    id: "yellow-cards",
-    prompt: "Toplam sarı kart sayısı?",
-    options: ["0-1", "2-3", "4-5", "6+"],
+    id: "first-goal-team",
+    prompt: "İlk golü hangi takım atar?",
+    options: [], // buildMatchQuestions tarafından doldurulur
     points: 8,
   },
   {
-    id: "both-teams-carded",
-    prompt: "Her iki takımdan da sarı kart çıkar mı?",
-    options: ["Evet", "Hayır"],
-    points: 7,
+    id: "first-goal-minute",
+    prompt: "İlk gol hangi dakika aralığında olur?",
+    options: ["1-15", "16-30", "31-45", "46-60", "61-75", "76+", "Gol olmaz"],
+    points: 10,
   },
   {
-    id: "red-card-in-match",
-    prompt: "Maçta kırmızı kart çıkar mı?",
-    options: ["Evet", "Hayır"],
-    points: 9,
-  },
-  {
-    id: "corners-winner",
-    prompt: "Hangi takım daha fazla köşe vuruşu kullanır?",
-    options: [], // buildMatchQuestions tarafından takım adlarıyla doldurulur
+    id: "most-goals-half",
+    prompt: "Hangi devre daha golcü olur?",
+    options: ["1. Devre", "2. Devre", "Eşit"],
     points: 8,
-  },
-  {
-    id: "total-corners",
-    prompt: "Toplam köşe vuruşu sayısı?",
-    options: ["0-4", "5-8", "9-12", "13+"],
-    points: 9,
   },
 ];
 
@@ -240,8 +228,8 @@ export function buildMatchQuestions(
 ): MatchQuestion[] {
   const classic = buildClassicQuestions(homeTeamName, awayTeamName);
   const poolPicks = pickFromPool(matchId, QUESTION_POOL, 3).map((q) => {
-    if (q.id === "corners-winner") {
-      return { ...q, options: [homeTeamName, awayTeamName, "Eşit"] };
+    if (q.id === "first-goal-team") {
+      return { ...q, options: [homeTeamName, awayTeamName, "Gol olmaz"] };
     }
     return q;
   });

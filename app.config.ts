@@ -2,7 +2,7 @@
 type AppConfig = any;
 
 const config: AppConfig = {
-  name: "World Cup Fantasy League",
+  name: "Football Fantasy League",
   slug: "world-cup-fantasy-league",
 
   // --- Versiyon ---

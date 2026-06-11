@@ -73,7 +73,12 @@ async function apiFetch<T>(path: string): Promise<T | null> {
 
 function getStat(stats: TeamStatEntry["statistics"], type: string): number {
   const entry = stats.find((s) => s.type === type);
-  return typeof entry?.value === "number" ? entry.value : 0;
+  if (typeof entry?.value === "number") return entry.value;
+  if (typeof entry?.value === "string") {
+    const parsed = parseInt(entry.value, 10);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
 }
 
 export function isApiFootballConfigured(): boolean {

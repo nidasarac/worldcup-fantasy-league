@@ -22,7 +22,7 @@ export function WorldCupHero({
       <View style={styles.heroTopRow}>
         <View style={styles.heroChip}>
           <MaterialCommunityIcons name="trophy-award" size={16} color="#fff" />
-          <Text style={styles.heroChipText}>World Cup 26</Text>
+          <Text style={styles.heroChipText}>Football Fantasy</Text>
         </View>
         <Text style={styles.heroMeta}>Friends League</Text>
       </View>

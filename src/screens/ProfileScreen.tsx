@@ -55,7 +55,7 @@ export function ProfileScreen({
     profile?.firstName ||
     profile?.displayName ||
     user.displayName ||
-    "World Cup 26 oyuncusu";
+    "Football Fantasy oyuncusu";
   const effectiveProfile =
     profile ??
     ({
@@ -248,7 +248,7 @@ export function ProfileScreen({
             <ActivityIndicator color={theme.heroText} />
           ) : (
             <Text style={styles.authSubmitText}>
-              {leagueMode === "create" ? "Ligi Kur" : "Koda Katıl"}
+              {leagueMode === "create" ? "Ligi Kur" : "Katıl"}
             </Text>
           )}
         </Pressable>

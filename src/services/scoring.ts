@@ -10,7 +10,6 @@ import {
 
 
 import { ApiGame } from "../api/worldCup";
-import { MatchStats } from "../api/apiFootball";
 import { getFirebaseDb } from "../lib/firebase";
 import {
   MatchResult,
@@ -19,11 +18,25 @@ import {
 } from "../types/firestore";
 import { buildMatchQuestions } from "./questions";
 
+function parseScorers(raw: string): Array<{ name: string; minute: number }> {
+  if (!raw || raw === "null") return [];
+  const inner = raw.replace(/^\{/, "").replace(/\}$/, "").replace(/"/g, "");
+  return inner
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const m = s.match(/^(.+?)\s+(\d+)\+?'?$/);
+      if (!m) return null;
+      return { name: m[1].trim(), minute: parseInt(m[2], 10) };
+    })
+    .filter((x): x is { name: string; minute: number } => x !== null);
+}
+
 export function buildMatchResultFromGame(
   game: ApiGame,
   homeDisplayName: string,
   awayDisplayName: string,
-  stats: MatchStats | null,
 ): MatchResult {
   const home = parseInt(game.home_score || "0", 10);
   const away = parseInt(game.away_score || "0", 10);
@@ -32,25 +45,29 @@ export function buildMatchResultFromGame(
   else if (away > home) winner = awayDisplayName;
   else winner = "Beraberlik";
 
+  const homeScorers = parseScorers(game.home_scorers ?? "");
+  const awayScorers = parseScorers(game.away_scorers ?? "");
+
+  const allScorers = [
+    ...homeScorers.map((s) => ({ ...s, team: "home" as const })),
+    ...awayScorers.map((s) => ({ ...s, team: "away" as const })),
+  ].sort((a, b) => a.minute - b.minute);
+
+  const firstGoal = allScorers[0] ?? null;
+  const halfTimeHomeGoals = homeScorers.filter((s) => s.minute <= 45).length;
+  const halfTimeAwayGoals = awayScorers.filter((s) => s.minute <= 45).length;
+
   return {
     homeScore: home,
     awayScore: away,
     winner,
     bothTeamsScore: home > 0 && away > 0,
-    redCard: ((stats?.homeRedCards ?? 0) + (stats?.awayRedCards ?? 0)) > 0,
-    homeYellowCards: stats?.homeYellowCards ?? 0,
-    awayYellowCards: stats?.awayYellowCards ?? 0,
-    homeRedCards: stats?.homeRedCards ?? 0,
-    awayRedCards: stats?.awayRedCards ?? 0,
-    homeCorners: stats?.homeCorners ?? 0,
-    awayCorners: stats?.awayCorners ?? 0,
-    ...(stats != null
-      ? {
-          halfTimeHomeGoals: stats.halfTimeHomeGoals,
-          halfTimeAwayGoals: stats.halfTimeAwayGoals,
-          firstHalfGoals: (stats.halfTimeHomeGoals ?? 0) + (stats.halfTimeAwayGoals ?? 0),
-        }
-      : {}),
+    redCard: false,
+    firstGoalTeam: firstGoal ? firstGoal.team : "none",
+    firstGoalMinute: firstGoal?.minute,
+    halfTimeHomeGoals,
+    halfTimeAwayGoals,
+    firstHalfGoals: halfTimeHomeGoals + halfTimeAwayGoals,
     resolvedAt: new Date().toISOString(),
   };
 }
@@ -114,35 +131,27 @@ export function getCorrectAnswer(
     case "over-25":
       return h + a >= 3 ? "Üstü (3+ gol)" : "Altı (0–2 gol)";
 
-    // API-Football soruları
-    case "yellow-cards": {
-      const yc = (result.homeYellowCards ?? 0) + (result.awayYellowCards ?? 0);
-      if (yc <= 1) return "0-1";
-      if (yc <= 3) return "2-3";
-      if (yc <= 5) return "4-5";
-      return "6+";
+    // Scorer tabanlı sorular
+    case "first-goal-team":
+      if (result.firstGoalTeam === "home") return homeTeamName;
+      if (result.firstGoalTeam === "away") return awayTeamName;
+      return "Gol olmaz";
+    case "first-goal-minute": {
+      const min = result.firstGoalMinute;
+      if (min == null) return "Gol olmaz";
+      if (min <= 15) return "1-15";
+      if (min <= 30) return "16-30";
+      if (min <= 45) return "31-45";
+      if (min <= 60) return "46-60";
+      if (min <= 75) return "61-75";
+      return "76+";
     }
-    case "both-teams-carded":
-      return (result.homeYellowCards ?? 0) > 0 && (result.awayYellowCards ?? 0) > 0
-        ? "Evet"
-        : "Hayır";
-    case "red-card-in-match":
-      return (result.homeRedCards ?? 0) + (result.awayRedCards ?? 0) > 0
-        ? "Evet"
-        : "Hayır";
-    case "corners-winner": {
-      const hc = result.homeCorners ?? 0;
-      const ac = result.awayCorners ?? 0;
-      if (hc > ac) return homeTeamName;
-      if (ac > hc) return awayTeamName;
+    case "most-goals-half": {
+      const first = (result.halfTimeHomeGoals ?? 0) + (result.halfTimeAwayGoals ?? 0);
+      const second = result.homeScore + result.awayScore - first;
+      if (first > second) return "1. Devre";
+      if (second > first) return "2. Devre";
       return "Eşit";
-    }
-    case "total-corners": {
-      const tc = (result.homeCorners ?? 0) + (result.awayCorners ?? 0);
-      if (tc <= 4) return "0-4";
-      if (tc <= 8) return "5-8";
-      if (tc <= 12) return "9-12";
-      return "13+";
     }
     default:
       return null;

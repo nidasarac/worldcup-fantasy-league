@@ -143,6 +143,7 @@ export function HomeScreen({
     if (!data) return [];
 
     return [...data.games]
+      .filter((game) => game.source !== "manual-test")
       .map((game) => ({ game, date: getTurkeyDateTime(game) }))
       .filter((entry) => entry.date && entry.game.finished !== "TRUE")
       .sort((left, right) => left.date!.toMillis() - right.date!.toMillis())
@@ -303,7 +304,7 @@ export function HomeScreen({
         <View style={styles.loadingCard}>
           <Text style={styles.loadingTitle}>Maçlar yükleniyor</Text>
           <Text style={styles.loadingCopy}>
-            World Cup 26 API üzerinden canlı fikstür verisi alınıyor.
+            Canlı fikstür verisi alınıyor.
           </Text>
         </View>
       ) : null}

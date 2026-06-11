@@ -175,9 +175,9 @@ export function AdminPanel({
         worldCupData: worldCupData!,
       });
       setTestNotifMsg(
-        settledCount > 0
+        processedMatches > 0
           ? `${processedMatches} maç işlendi, ${settledCount} tahmin puanlandı.`
-          : "İşlenecek yeni bitmiş maç bulunamadı.",
+          : "İşlenecek bitmiş maç bulunamadı.",
       );
       await loadStatuses();
     } catch (error) {

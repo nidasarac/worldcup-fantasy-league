@@ -236,19 +236,30 @@ export async function fetchWorldCupData(): Promise<WorldCupData> {
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const [gamesRes, groupsRes, teamsRes, stadiumsRes, manualTestGames] = await Promise.all([
-      getJson<{ games?: ApiGame[] }>("/get/games", controller.signal),
-      getJson<{ groups?: ApiGroup[] }>("/get/groups", controller.signal),
-      getJson<{ teams?: ApiTeam[] }>("/get/teams", controller.signal),
-      getJson<{ stadiums?: ApiStadium[] }>("/get/stadiums", controller.signal),
-      fetchManualTestGames(),
-    ]);
+    const [gamesResult, groupsResult, teamsResult, stadiumsResult, manualTestGames] =
+      await Promise.allSettled([
+        getJson<{ games?: ApiGame[] }>("/get/games", controller.signal),
+        getJson<{ groups?: ApiGroup[] }>("/get/groups", controller.signal),
+        getJson<{ teams?: ApiTeam[] }>("/get/teams", controller.signal),
+        getJson<{ stadiums?: ApiStadium[] }>("/get/stadiums", controller.signal),
+        fetchManualTestGames(),
+      ]);
+
+    const gamesRes = gamesResult.status === "fulfilled" ? gamesResult.value : null;
+    const groupsRes = groupsResult.status === "fulfilled" ? groupsResult.value : null;
+    const teamsRes = teamsResult.status === "fulfilled" ? teamsResult.value : null;
+    const stadiumsRes = stadiumsResult.status === "fulfilled" ? stadiumsResult.value : null;
+    const manualGames = manualTestGames.status === "fulfilled" ? manualTestGames.value : [];
 
     const apiGames = Array.isArray(gamesRes?.games) ? gamesRes.games : [];
     const groups = Array.isArray(groupsRes?.groups) ? groupsRes.groups : [];
     const teams = Array.isArray(teamsRes?.teams) ? teamsRes.teams : [];
     const stadiums = Array.isArray(stadiumsRes?.stadiums) ? stadiumsRes.stadiums : [];
-    const games = [...apiGames, ...manualTestGames];
+    const games = [...apiGames, ...manualGames];
+
+    if (games.length === 0 && groups.length === 0 && teams.length === 0) {
+      throw new Error("Maç verisi alınamadı. Lütfen daha sonra tekrar deneyin.");
+    }
 
     return {
       games,
