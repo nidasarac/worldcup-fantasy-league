@@ -15,8 +15,5 @@
     "production": {
       "channel": "production"
     }
-  },
-  "update": {
-    "channel": "production"
   }
 }
