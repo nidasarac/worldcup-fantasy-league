@@ -232,7 +232,13 @@ export async function settleMatchPredictions(params: {
           awayTeamName,
         );
 
-        if (correct === null) return;
+        if (correct === null) {
+          // Artık geçersiz soru (eski API soruları) — puanı sıfırla
+          if (regrade) {
+            batch.set(answerDoc.ref, { ...answer, resultStatus: "not-applicable", awardedPoints: 0 }, { merge: true });
+          }
+          return;
+        }
 
         scorableCount += 1;
         const isCorrect = answer.selectedValue === correct;
