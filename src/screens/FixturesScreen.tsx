@@ -30,16 +30,28 @@ export function FixturesScreen({
   loading: boolean;
   error: string | null;
 }) {
+  const KNOCKOUT_ORDER = ["r32", "r16", "qf", "sf", "third", "final"] as const;
+  const KNOCKOUT_LABELS: Record<string, string> = {
+    r32: "Son 32",
+    r16: "Son 16",
+    qf: "Çeyrek Final",
+    sf: "Yarı Final",
+    third: "Üçüncülük",
+    final: "Final",
+  };
+
   const allFixtures = useMemo(() => {
     if (!data) {
       return [];
     }
 
-    return [...data.games].sort((left, right) => {
-      const leftTime = getTurkeyDateTime(left)?.toMillis() ?? 0;
-      const rightTime = getTurkeyDateTime(right)?.toMillis() ?? 0;
-      return leftTime - rightTime;
-    });
+    return [...data.games]
+      .filter((game) => game.source !== "manual-test")
+      .sort((left, right) => {
+        const leftTime = getTurkeyDateTime(left)?.toMillis() ?? 0;
+        const rightTime = getTurkeyDateTime(right)?.toMillis() ?? 0;
+        return leftTime - rightTime;
+      });
   }, [data]);
 
   const dateOptions = useMemo(
@@ -50,14 +62,21 @@ export function FixturesScreen({
     [allFixtures],
   );
 
-  const groupOptions = useMemo(
-    () => {
-      const apiGroups = data?.groups.map((group) => group.name) ?? [];
-      const gameGroups = (data?.games ?? []).map((game) => game.group).filter(Boolean);
-      return ["ALL", ...Array.from(new Set([...apiGroups, ...gameGroups])).sort((a, b) => a.localeCompare(b))];
-    },
-    [data],
-  );
+  const groupOptions = useMemo(() => {
+    const apiGroupLetters = data?.groups.map((g) => g.name) ?? [];
+    const gameGroupLetters = allFixtures
+      .filter((g) => g.type === "group")
+      .map((g) => g.group)
+      .filter(Boolean);
+    const groupLetters = Array.from(new Set([...apiGroupLetters, ...gameGroupLetters])).sort((a, b) =>
+      a.localeCompare(b),
+    );
+
+    const gameTypes = new Set(allFixtures.map((g) => g.type));
+    const knockoutOptions = KNOCKOUT_ORDER.filter((k) => gameTypes.has(k));
+
+    return ["ALL", ...groupLetters, ...knockoutOptions];
+  }, [data, allFixtures]);
 
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("ALL");
@@ -126,7 +145,10 @@ export function FixturesScreen({
       allFixtures.filter((fixture) => {
         const sameDate = !selectedDate || getTurkeyDateKey(fixture) === selectedDate;
         const sameGroup =
-          selectedGroup === "ALL" || fixture.group === selectedGroup;
+          selectedGroup === "ALL" ||
+          (selectedGroup in KNOCKOUT_LABELS
+            ? fixture.type === selectedGroup
+            : fixture.group === selectedGroup);
 
         return sameDate && sameGroup;
       }),
@@ -265,7 +287,9 @@ export function FixturesScreen({
                       active && styles.optionPillTextActive,
                     ]}
                   >
-                    {groupName === "ALL" ? "Tüm Gruplar" : `Grup ${groupName}`}
+                    {groupName === "ALL"
+                      ? "Tüm Maçlar"
+                      : KNOCKOUT_LABELS[groupName] ?? `Grup ${groupName}`}
                   </Text>
                 </Pressable>
               );

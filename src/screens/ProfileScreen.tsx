@@ -215,7 +215,7 @@ export function ProfileScreen({
             <TextInput
               value={leagueName}
               onChangeText={setLeagueName}
-              placeholder="Nida'nın Dünya Kupası Ligi"
+              placeholder="Dünya Kupası Ligim"
               placeholderTextColor={theme.muted}
               style={styles.authInput}
             />
