@@ -80,7 +80,7 @@ function SplashScreen({
             color={theme.heroText}
           />
         </Animated.View>
-        <Text style={styles.splashTitle}>World Cup 26</Text>
+        <Text style={styles.splashTitle}>Football Fantasy</Text>
         <Text style={styles.splashSubtitle}>
           Oturum kontrol ediliyor…
         </Text>
@@ -104,7 +104,7 @@ function AppHeader({
 }) {
   const headerMap = {
     home: {
-      eyebrow: "World Cup 26",
+      eyebrow: "Football Fantasy",
       title: "Günlük tahminler",
       subtitle: "Bugünün maçlarını aç ve hızlı tahmin yap.",
       icon: "soccer-field",
