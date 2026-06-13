@@ -83,14 +83,22 @@ export function FixturesScreen({
   const [selectedMonth, setSelectedMonth] = useState("");
 
   useEffect(() => {
-    if (!selectedDate && dateOptions[0]) {
-      setSelectedDate(dateOptions[0]);
+    if (!selectedDate && dateOptions.length > 0) {
+      const todayKey = DateTime.now().setZone("Europe/Istanbul").toFormat("yyyy-MM-dd");
+      const defaultDate = dateOptions.includes(todayKey)
+        ? todayKey
+        : (dateOptions.find((d) => d >= todayKey) ?? dateOptions[0]);
+      setSelectedDate(defaultDate);
     }
   }, [dateOptions, selectedDate]);
 
   useEffect(() => {
-    if (!selectedMonth && dateOptions[0]) {
-      setSelectedMonth(dateOptions[0].slice(0, 7));
+    if (!selectedMonth && dateOptions.length > 0) {
+      const todayKey = DateTime.now().setZone("Europe/Istanbul").toFormat("yyyy-MM-dd");
+      const defaultDate = dateOptions.includes(todayKey)
+        ? todayKey
+        : (dateOptions.find((d) => d >= todayKey) ?? dateOptions[0]);
+      setSelectedMonth(defaultDate.slice(0, 7));
     }
   }, [dateOptions, selectedMonth]);
 

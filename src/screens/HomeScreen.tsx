@@ -18,7 +18,6 @@ import {
   getGameStatus,
   getStageLabel,
   getTurkeyDateTime,
-  isSameTurkeyDay,
   WorldCupData,
 } from "../api/worldCup";
 import { WorldCupHero } from "../components/Cards";
@@ -150,12 +149,19 @@ export function HomeScreen({
       .map((entry) => entry.game);
   }, [data]);
 
-  const todayGames = useMemo(() => {
+  // Tahmin penceresi açık olan veya 24 saat içinde başlayacak maçlar
+  const imminentGames = useMemo(() => {
     const now = DateTime.now().setZone("Europe/Istanbul");
-    return upcomingGames.filter((game) => isSameTurkeyDay(game, now));
+    return upcomingGames.filter((game) => {
+      const kickoff = getTurkeyDateTime(game);
+      if (!kickoff) return false;
+      const diffMinutes = kickoff.diff(now, "minutes").minutes;
+      // Türkiye günü aynıysa veya 24 saat içindeyse göster
+      return kickoff.hasSame(now, "day") || diffMinutes <= 24 * 60;
+    });
   }, [upcomingGames]);
 
-  const visibleGames = todayGames.length ? todayGames : upcomingGames.slice(0, 4);
+  const visibleGames = imminentGames.length ? imminentGames : upcomingGames.slice(0, 4);
 
   // Bulk-check which visible games the user has already predicted
   useEffect(() => {

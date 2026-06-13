@@ -1,89 +1,46 @@
 import { useEffect, useRef } from "react";
 
-import {
-  getDisplayTeam,
-  WorldCupData,
-} from "../api/worldCup";
-import { getMatchResult, setMatchResult } from "../services/matches";
-import { buildMatchResultFromGame, settleMatchPredictions } from "../services/scoring";
-import { syncMatchQuestionsByAdmin } from "../services/admin";
+import { WorldCupData } from "../api/worldCup";
+import { getAdminMatchStatus, settleMatchByAdmin } from "../services/admin";
 
-const REGRADE_DELAY_MS = 30 * 60 * 1000;
-
+// Admin kullanıcısının oturumu boyunca, biten her maç için bir kez çalışır.
+// App.tsx'te sadece admin e-postası eşleşince çağrılır —
+// Firestore kuralları matches/*/result ve questions yazmayı sadece admin'e izin verir.
 export function useAutoSettle(worldCupData: WorldCupData | null) {
-  const firstDetectedAtRef = useRef<Record<string, number>>({});
-  const firstSettledRef = useRef<Set<string>>(new Set());
-  const regradeRef = useRef<Set<string>>(new Set());
+  const processedRef = useRef<Set<string>>(new Set());
   const runningRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!worldCupData) return;
-
-    const now = Date.now();
 
     const finishedGames = worldCupData.games.filter(
       (game) => game.finished === "TRUE" && game.source !== "manual-test",
     );
 
     finishedGames.forEach(async (game) => {
-      if (!firstDetectedAtRef.current[game.id]) {
-        firstDetectedAtRef.current[game.id] = now;
-      }
-
-      const detectedAt = firstDetectedAtRef.current[game.id];
-      const msSinceDetected = now - detectedAt;
-
-      const needsFirst = !firstSettledRef.current.has(game.id);
-      const needsRegrade =
-        msSinceDetected >= REGRADE_DELAY_MS && !regradeRef.current.has(game.id);
-
-      if (!needsFirst && !needsRegrade) return;
+      if (processedRef.current.has(game.id)) return;
       if (runningRef.current.has(game.id)) return;
 
       runningRef.current.add(game.id);
 
       try {
-        const { teamMap } = worldCupData;
-        const homeDisplay = getDisplayTeam(game, "home", teamMap);
-        const awayDisplay = getDisplayTeam(game, "away", teamMap);
+        const status = await getAdminMatchStatus(game.id);
+        const needsWork =
+          !status.hasResult ||
+          status.questionCount === 0 ||
+          status.pendingPredictionCount > 0 ||
+          status.settledPredictionCount > 0;
 
-        if (needsFirst) {
-          const existingResult = await getMatchResult(game.id);
-
-          if (!existingResult) {
-            const result = buildMatchResultFromGame(game, homeDisplay.name, awayDisplay.name);
-            await setMatchResult(game.id, result);
-            await syncMatchQuestionsByAdmin({ game, worldCupData });
-            await settleMatchPredictions({
-              matchId: game.id,
-              matchResult: result,
-              homeTeamName: homeDisplay.name,
-              awayTeamName: awayDisplay.name,
-              regrade: false,
-            });
-          }
-
-          firstSettledRef.current.add(game.id);
+        if (needsWork) {
+          await settleMatchByAdmin({ game, worldCupData });
         }
 
-        if (needsRegrade) {
-          const result = buildMatchResultFromGame(game, homeDisplay.name, awayDisplay.name);
-          await setMatchResult(game.id, result);
-          await settleMatchPredictions({
-            matchId: game.id,
-            matchResult: result,
-            homeTeamName: homeDisplay.name,
-            awayTeamName: awayDisplay.name,
-            regrade: true,
-          });
-          regradeRef.current.add(game.id);
-        }
+        processedRef.current.add(game.id);
       } catch {
+        // sessizce geç — bir sonraki worldCupData güncellemesinde tekrar denenecek
+      } finally {
         runningRef.current.delete(game.id);
-        return;
       }
-
-      runningRef.current.delete(game.id);
     });
   }, [worldCupData]);
 }
