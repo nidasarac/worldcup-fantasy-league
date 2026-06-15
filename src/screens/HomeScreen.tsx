@@ -248,6 +248,12 @@ export function HomeScreen({
   const handleSavePrediction = async () => {
     if (!selectedGame) return;
 
+    const unanswered = modalQuestions.filter((q) => !selectedAnswers[q.id]);
+    if (unanswered.length > 0) {
+      setPredictionError("Tüm soruları işaretlemelisin.");
+      return;
+    }
+
     setSavingPrediction(true);
     setPredictionMessage(null);
     setPredictionError(null);
@@ -289,6 +295,14 @@ export function HomeScreen({
   const modalAway = selectedGame
     ? getDisplayTeam(selectedGame, "away", data?.teamMap ?? {})
     : null;
+
+  const isTurkeyModal = useMemo(
+    () =>
+      modalHome && modalAway
+        ? isTurkeyMatch(modalHome.name, modalAway.name)
+        : false,
+    [modalHome, modalAway],
+  );
 
   return (
     <>
@@ -477,8 +491,20 @@ export function HomeScreen({
                       <Text style={styles.modalQuestionPrompt}>
                         {question.prompt}
                       </Text>
-                      <View style={styles.modalPointsBadge}>
-                        <Text style={styles.modalPointsBadgeText}>{question.points}p</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <View style={styles.modalPointsBadge}>
+                          <Text style={styles.modalPointsBadgeText}>{question.points}p</Text>
+                        </View>
+                        {isTurkeyModal ? (
+                          <View style={{
+                            backgroundColor: "#E8192C",
+                            borderRadius: 999,
+                            paddingHorizontal: 7,
+                            paddingVertical: 4,
+                          }}>
+                            <Text style={{ color: "#fff", fontSize: 11, fontWeight: "900" }}>×2</Text>
+                          </View>
+                        ) : null}
                       </View>
                     </View>
 

@@ -437,10 +437,15 @@ export default function App() {
   const userLeagues = useUserLeagues(authSession.user?.uid, leagueRefreshKey);
   const { data, loading, error, refresh: refreshWorldCupData } = useWorldCupData();
 
+  const refreshLeagueData = () => {
+    userProfile.refresh();
+    setLeagueRefreshKey((current) => current + 1);
+  };
+
   // Auto-settle yalnızca admin kullanıcıda çalışır —
   // Firestore kuralları matches/*/result ve questions yazmayı sadece admin'e izin verir
   const isAdmin = authSession.user?.email === "nidasaracc@gmail.com";
-  useAutoSettle(isAdmin ? data : null);
+  useAutoSettle(isAdmin ? data : null, refreshLeagueData);
 
   // Maç verisi geldiğinde bildirimleri planla
   useEffect(() => {
@@ -468,11 +473,6 @@ export default function App() {
     } finally {
       setLoggingOut(false);
     }
-  };
-
-  const refreshLeagueData = () => {
-    userProfile.refresh();
-    setLeagueRefreshKey((current) => current + 1);
   };
 
   const handleSetActiveLeague = async (leagueId: string) => {
