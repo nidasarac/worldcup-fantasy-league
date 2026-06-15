@@ -8,7 +8,7 @@ const config: AppConfig = {
   // --- Versiyon ---
   // version: kullanıcıya görünen numara (App Store / Play Store'da gösterilir)
   // Güncelleme yaptığında artır: 1.0.0 → 1.1.0 (yeni özellik) veya 1.0.1 (bugfix)
-  version: "1.0.2",
+  version: "1.0.3",
 
   orientation: "portrait",
   userInterfaceStyle: "light",
@@ -30,7 +30,7 @@ const config: AppConfig = {
     icon: "./assets/icon.png",
     // buildNumber: Her App Store submission'da artır (1, 2, 3...)
     // Aynı version için bile farklı buildNumber gerekir
-    buildNumber: "2",
+    buildNumber: "3",
   },
   android: {
     package: "com.nnidasarac.worldcupfantasyleague",
