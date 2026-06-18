@@ -7,7 +7,7 @@ import { logoutUser } from "../services/auth";
 import { AppStyles } from "../styles";
 import { ThemeMode, ThemePalette } from "../theme";
 
-const ADMIN_EMAIL = "nidasaracc@gmail.com";
+const ADMIN_EMAILS = ["nidasaracc@gmail.com", "nnidasarac@gmail.com"];
 
 export function SettingsScreen({
   styles,
@@ -81,7 +81,7 @@ export function SettingsScreen({
         </Pressable>
       </View>
 
-      {userEmail === ADMIN_EMAIL ? (
+      {userEmail && ADMIN_EMAILS.includes(userEmail) ? (
         <AdminPanel
           styles={styles}
           theme={theme}

@@ -3,7 +3,6 @@ import { DateTime } from "luxon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -263,6 +262,8 @@ export function HomeScreen({
         userId,
         matchId: selectedGame.id,
         leagueId: activeLeagueId,
+        homeTeamName: modalHome?.name,
+        awayTeamName: modalAway?.name,
         answers: modalQuestions
           .filter((question) => selectedAnswers[question.id])
           .map((question) => ({
@@ -339,13 +340,43 @@ export function HomeScreen({
       {visibleGames.map((game) => {
         const home = getDisplayTeam(game, "home", data?.teamMap ?? {});
         const away = getDisplayTeam(game, "away", data?.teamMap ?? {});
-        const stadium = data?.stadiumMap[game.stadium_id];
         const predictionState = getPredictionWindowState(game);
+        const isFinished = game.finished === "TRUE";
         const hasPredicted = predictedMatchIds[game.id];
         const isCheckingPrediction = loadingInitialPredictions && !checkedGamesRef.current.has(game.id);
 
+        const isTurkey = isTurkeyMatch(home.name, away.name);
+
         return (
-          <View key={game._id} style={styles.homeMatchCard}>
+          <View
+            key={game._id}
+            style={[
+              styles.homeMatchCard,
+              isTurkey && { borderColor: "#e8003d", borderWidth: 1.5 },
+            ]}
+          >
+            {isTurkey ? (
+              <View style={{
+                backgroundColor: "#e8003d",
+                marginHorizontal: -14,
+                marginTop: -14,
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}>
+                <Text style={{ fontSize: 16 }}>🇹🇷</Text>
+                <Text style={{ color: "#ffffff", fontSize: 12, fontWeight: "900", letterSpacing: 0.5 }}>
+                  TÜRKİYE MAÇI  •  2× PUAN
+                </Text>
+                <Text style={{ fontSize: 16 }}>🇹🇷</Text>
+              </View>
+            ) : null}
+
             <View style={styles.homeMatchTopRow}>
               <View style={styles.matchMetaChip}>
                 <Text style={styles.matchMetaChipText}>{getStageLabel(game)}</Text>
@@ -357,32 +388,24 @@ export function HomeScreen({
 
             <View style={styles.homeMatchTeamsRow}>
               <View style={styles.homeTeamInline}>
-                {home.flag ? (
-                  <Image source={{ uri: home.flag }} style={styles.teamFlagImage} />
-                ) : (
-                  <Text style={styles.teamFlag}>🏳️</Text>
-                )}
+                <Text style={styles.teamFlag}>{home.flagEmoji}</Text>
                 <Text style={styles.homeTeamInlineName}>{home.name}</Text>
               </View>
 
               <View style={styles.homeVsBadge}>
                 <Text style={styles.homeVsText}>
-                  {game.home_score} - {game.away_score}
+                  {isFinished ? `${game.home_score} - ${game.away_score}` : "vs"}
                 </Text>
               </View>
 
               <View style={styles.homeTeamInline}>
-                {away.flag ? (
-                  <Image source={{ uri: away.flag }} style={styles.teamFlagImage} />
-                ) : (
-                  <Text style={styles.teamFlag}>🏳️</Text>
-                )}
+                <Text style={styles.teamFlag}>{away.flagEmoji}</Text>
                 <Text style={styles.homeTeamInlineName}>{away.name}</Text>
               </View>
             </View>
 
             <Text style={styles.homeMatchMeta}>
-              {stadium?.fifa_name ?? "Stadyum bekleniyor"} •{" "}
+              {game.stadiumName ?? game.stadiumCity ?? "Stadyum bekleniyor"} •{" "}
               {predictionState.detail}
             </Text>
 
@@ -460,7 +483,7 @@ export function HomeScreen({
                   </Text>
                   <Text style={styles.modalMatchMeta}>
                     {getStageLabel(selectedGame)} •{" "}
-                    {data?.stadiumMap[selectedGame.stadium_id]?.fifa_name ?? "Stadyum bekleniyor"}
+                    {selectedGame.stadiumName ?? selectedGame.stadiumCity ?? "Stadyum bekleniyor"}
                   </Text>
                   {modalPredictionState?.countdown ? (
                     <View style={[styles.matchMetaChip, { alignSelf: "center", marginTop: 4 }]}>

@@ -49,6 +49,8 @@ export async function saveUserMatchPrediction(params: {
   userId: string;
   matchId: string;
   leagueId?: string;
+  homeTeamName?: string;
+  awayTeamName?: string;
   answers: PredictionAnswer[];
 }) {
   const db = getFirebaseDb();
@@ -61,6 +63,8 @@ export async function saveUserMatchPrediction(params: {
       status: "submitted",
       submittedAt: serverTimestamp(),
       ...(params.leagueId ? { leagueId: params.leagueId } : {}),
+      ...(params.homeTeamName ? { homeTeamName: params.homeTeamName } : {}),
+      ...(params.awayTeamName ? { awayTeamName: params.awayTeamName } : {}),
     },
     { merge: true },
   );

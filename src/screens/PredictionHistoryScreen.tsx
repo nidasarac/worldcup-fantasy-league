@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { User } from "firebase/auth";
-import { useMemo, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -13,10 +14,13 @@ import {
 import {
   formatTurkeyMatchLabel,
   getDisplayTeam,
+  getFlagEmoji,
   getGameStatus,
   getStageLabel,
+  getTurkeyDateTime,
   WorldCupData,
 } from "../api/worldCup";
+import { getFirebaseDb } from "../lib/firebase";
 import { useUserPredictions } from "../hooks/useUserPredictions";
 import { getMatchQuestions, getMatchResult } from "../services/matches";
 import { buildMatchQuestions } from "../services/questions";
@@ -45,13 +49,16 @@ export function PredictionHistoryScreen({
   user,
   theme,
   worldCupData,
+  leagueRefreshKey,
 }: {
   styles: AppStyles;
   user: User;
   theme: ThemePalette;
   worldCupData?: WorldCupData | null;
+  leagueRefreshKey?: number;
 }) {
-  const userPredictions = useUserPredictions(user.uid);
+  const userPredictions = useUserPredictions(user.uid, leagueRefreshKey);
+  const [matchTeamNames, setMatchTeamNames] = useState<Record<string, { home: string; away: string }>>({});
   const [selectedHistory, setSelectedHistory] = useState<
     (Prediction & { id: string }) | null
   >(null);
@@ -63,15 +70,51 @@ export function PredictionHistoryScreen({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  const historyPredictions = useMemo(() => {
-    return userPredictions.predictions.filter((prediction) => {
-      const game = worldCupData?.games.find((item) => item.id === prediction.matchId);
-      return prediction.status === "settled" || game?.finished === "TRUE";
+  useEffect(() => {
+    const unresolved = userPredictions.predictions.filter((p) => {
+      const found = worldCupData?.games.find((g) => String(g.id) === String(p.matchId));
+      return !found && !matchTeamNames[String(p.matchId)] && !p.homeTeamName;
+    });
+    if (!unresolved.length) return;
+
+    const db = getFirebaseDb();
+    Promise.all(
+      unresolved.map(async (p) => {
+        try {
+          const snap = await getDoc(doc(db, "matches", String(p.matchId)));
+          if (snap.exists()) {
+            const d = snap.data() as { homeTeamName?: string; awayTeamName?: string };
+            if (d.homeTeamName && d.awayTeamName) {
+              return { id: String(p.matchId), home: d.homeTeamName, away: d.awayTeamName };
+            }
+          }
+        } catch {}
+        return null;
+      }),
+    ).then((results) => {
+      const names: Record<string, { home: string; away: string }> = {};
+      results.forEach((r) => { if (r) names[r.id] = { home: r.home, away: r.away }; });
+      if (Object.keys(names).length) setMatchTeamNames((prev) => ({ ...prev, ...names }));
     });
   }, [userPredictions.predictions, worldCupData?.games]);
 
+  const historyPredictions = useMemo(() => {
+    return userPredictions.predictions
+      .filter((prediction) => {
+        const game = worldCupData?.games.find((item) => String(item.id) === String(prediction.matchId));
+        return prediction.status === "settled" || game?.finished === "TRUE";
+      })
+      .sort((a, b) => {
+        const gameA = worldCupData?.games.find((g) => String(g.id) === String(a.matchId));
+        const gameB = worldCupData?.games.find((g) => String(g.id) === String(b.matchId));
+        const timeA = gameA ? (getTurkeyDateTime(gameA)?.toMillis() ?? 0) : 0;
+        const timeB = gameB ? (getTurkeyDateTime(gameB)?.toMillis() ?? 0) : 0;
+        return timeB - timeA;
+      });
+  }, [userPredictions.predictions, worldCupData?.games]);
+
   const selectedHistoryGame = selectedHistory
-    ? worldCupData?.games.find((item) => item.id === selectedHistory.matchId) ?? null
+    ? worldCupData?.games.find((item) => String(item.id) === String(selectedHistory.matchId)) ?? null
     : null;
   const selectedHistoryHome = selectedHistoryGame
     ? getDisplayTeam(selectedHistoryGame, "home", worldCupData?.teamMap ?? {})
@@ -90,7 +133,7 @@ export function PredictionHistoryScreen({
 
     try {
       const game =
-        worldCupData?.games.find((item) => item.id === prediction.matchId) ?? null;
+        worldCupData?.games.find((item) => String(item.id) === String(prediction.matchId)) ?? null;
       const home = game
         ? getDisplayTeam(game, "home", worldCupData?.teamMap ?? {})
         : null;
@@ -165,58 +208,94 @@ export function PredictionHistoryScreen({
       ) : null}
 
       {historyPredictions.map((prediction) => {
-        const game = worldCupData?.games.find((item) => item.id === prediction.matchId);
-        const home = game
-          ? getDisplayTeam(game, "home", worldCupData?.teamMap ?? {})
-          : null;
-        const away = game
-          ? getDisplayTeam(game, "away", worldCupData?.teamMap ?? {})
-          : null;
+        const game = worldCupData?.games.find((item) => String(item.id) === String(prediction.matchId));
+        const home = game ? getDisplayTeam(game, "home", worldCupData?.teamMap ?? {}) : null;
+        const away = game ? getDisplayTeam(game, "away", worldCupData?.teamMap ?? {}) : null;
+        const isFinished = game?.finished === "TRUE";
+        const isSettled = prediction.status === "settled";
+
+        const homeName = home?.name
+          ?? prediction.homeTeamName
+          ?? matchTeamNames[String(prediction.matchId)]?.home
+          ?? "Ev";
+        const awayName = away?.name
+          ?? prediction.awayTeamName
+          ?? matchTeamNames[String(prediction.matchId)]?.away
+          ?? "Dep";
+        const homeFlag = home?.flagEmoji ?? getFlagEmoji(homeName);
+        const awayFlag = away?.flagEmoji ?? getFlagEmoji(awayName);
 
         return (
           <Pressable
             key={prediction.id}
             onPress={() => handleOpenHistory(prediction)}
-            style={styles.userLeagueCard}
+            style={styles.homeMatchCard}
           >
-            <View style={styles.userLeagueBody}>
-              <Text style={styles.userLeagueName}>
-                {game && home && away
-                  ? `${home.name} - ${away.name}`
-                  : `Maç #${prediction.matchId}`}
-              </Text>
-              <Text style={styles.userLeagueMeta}>
-                {game
-                  ? `${getStageLabel(game)} • ${formatTurkeyMatchLabel(game)}`
-                  : `Maç ID: ${prediction.matchId}`}
-              </Text>
-              {game ? (
-                <Text style={styles.userLeagueMeta}>{getGameStatus(game)}</Text>
-              ) : null}
-            </View>
-
-            <View style={styles.historyListRight}>
-              <View
-                style={[
-                  styles.userLeagueActiveBadge,
-                  prediction.status === "settled" && styles.predictionSettledBadge,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.userLeagueActiveText,
-                    prediction.status === "settled" &&
-                      styles.predictionSettledBadgeText,
-                  ]}
-                >
-                  {prediction.status === "settled" ? "Tamamlandı" : "Kaydedildi"}
+            {/* Üst satır: aşama + tarih */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={styles.matchMetaChip}>
+                <Text style={styles.matchMetaChipText}>
+                  {game ? getStageLabel(game) : "Maç"}
                 </Text>
               </View>
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={20}
-                color={theme.muted}
-              />
+              <Text style={styles.homeMatchMeta}>
+                {game ? formatTurkeyMatchLabel(game) : ""}
+              </Text>
+            </View>
+
+            {/* Takımlar + skor */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              {/* Ev takımı */}
+              <View style={{ flex: 1, alignItems: "center", gap: 4 }}>
+                <Text style={{ fontSize: 28 }}>{homeFlag}</Text>
+                <Text style={[styles.homeTeamInlineName, { textAlign: "center" }]} numberOfLines={2}>
+                  {homeName}
+                </Text>
+              </View>
+
+              {/* Skor rozeti */}
+              <View style={[styles.homeVsBadge, { minWidth: 70 }]}>
+                <Text style={styles.homeVsText}>
+                  {isFinished ? `${game!.home_score}–${game!.away_score}` : "–"}
+                </Text>
+              </View>
+
+              {/* Deplasman takımı */}
+              <View style={{ flex: 1, alignItems: "center", gap: 4 }}>
+                <Text style={{ fontSize: 28 }}>{awayFlag}</Text>
+                <Text style={[styles.homeTeamInlineName, { textAlign: "center" }]} numberOfLines={2}>
+                  {awayName}
+                </Text>
+              </View>
+            </View>
+
+            {/* Alt satır: puan + durum */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <Text style={styles.homeMatchMeta}>
+                  {isSettled && prediction.totalPointsAwarded !== undefined
+                    ? `${prediction.totalPointsAwarded} puan kazanıldı`
+                    : game ? getGameStatus(game) : ""}
+                </Text>
+                {isSettled && prediction.isExactHit ? (
+                  <View style={[styles.matchMetaChip, { backgroundColor: "#f59e0b" }]}>
+                    <Text style={[styles.matchMetaChipText, { color: "#fff" }]}>
+                      ⭐ +30 Tam İsabet
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={[
+                styles.userLeagueActiveBadge,
+                isSettled && styles.predictionSettledBadge,
+              ]}>
+                <Text style={[
+                  styles.userLeagueActiveText,
+                  isSettled && styles.predictionSettledBadgeText,
+                ]}>
+                  {isSettled ? "Tamamlandı" : "Kaydedildi"}
+                </Text>
+              </View>
             </View>
           </Pressable>
         );
@@ -256,13 +335,16 @@ export function PredictionHistoryScreen({
                   <Text style={styles.modalMatchTitle}>
                     {selectedHistoryHome && selectedHistoryAway
                       ? `${selectedHistoryHome.name} – ${selectedHistoryAway.name}`
-                      : `Maç #${selectedHistory.matchId}`}
+                      : selectedHistory.homeTeamName && selectedHistory.awayTeamName
+                        ? `${selectedHistory.homeTeamName} – ${selectedHistory.awayTeamName}`
+                        : matchTeamNames[String(selectedHistory.matchId)]
+                          ? `${matchTeamNames[String(selectedHistory.matchId)].home} – ${matchTeamNames[String(selectedHistory.matchId)].away}`
+                          : `Maç #${selectedHistory.matchId}`}
                   </Text>
                   {selectedHistoryGame ? (
                     <Text style={styles.modalMatchMeta}>
                       {getStageLabel(selectedHistoryGame)} •{" "}
-                      {worldCupData?.stadiumMap[selectedHistoryGame.stadium_id]?.fifa_name ??
-                        "Stadyum bekleniyor"}
+                      {selectedHistoryGame.stadiumName ?? selectedHistoryGame.stadiumCity ?? "Stadyum bekleniyor"}
                     </Text>
                   ) : null}
                   {historyResult ? (

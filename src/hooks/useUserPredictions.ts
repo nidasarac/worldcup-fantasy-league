@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { listUserPredictions } from "../services/predictions";
 import { Prediction } from "../types/firestore";
 
-export function useUserPredictions(userId?: string) {
+export function useUserPredictions(userId?: string, refreshKey?: number) {
   const [predictions, setPredictions] = useState<Array<Prediction & { id: string }>>([]);
   const [loading, setLoading] = useState(Boolean(userId));
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +47,7 @@ export function useUserPredictions(userId?: string) {
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [userId, refreshKey]);
 
   return { predictions, loading, error };
 }

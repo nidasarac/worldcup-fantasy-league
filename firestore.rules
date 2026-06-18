@@ -12,7 +12,10 @@ service cloud.firestore {
 
     // Custom claim yerine email kontrolü — ekstra kurulum gerektirmez
     function isAdmin() {
-      return signedIn() && request.auth.token.email == 'nidasaracc@gmail.com';
+      return signedIn() && (
+        request.auth.token.email == 'nidasaracc@gmail.com' ||
+        request.auth.token.email == 'nnidasarac@gmail.com'
+      );
     }
 
     function isLeagueMember(leagueId) {

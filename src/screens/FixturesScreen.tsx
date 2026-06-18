@@ -8,6 +8,7 @@ import {
   formatTurkeyDateLong,
   formatTurkeyMatchTime,
   getDisplayTeam,
+  getFlagEmoji,
   getGameStatus,
   getStageLabel,
   getTurkeyDateKey,
@@ -68,9 +69,9 @@ export function FixturesScreen({
       .filter((g) => g.type === "group")
       .map((g) => g.group)
       .filter(Boolean);
-    const groupLetters = Array.from(new Set([...apiGroupLetters, ...gameGroupLetters])).sort((a, b) =>
-      a.localeCompare(b),
-    );
+    const groupLetters = Array.from(new Set([...apiGroupLetters, ...gameGroupLetters]))
+      .filter((g) => g.length === 1 && g >= "A" && g <= "Z")
+      .sort((a, b) => a.localeCompare(b));
 
     const gameTypes = new Set(allFixtures.map((g) => g.type));
     const knockoutOptions = KNOCKOUT_ORDER.filter((k) => gameTypes.has(k));
@@ -309,7 +310,7 @@ export function FixturesScreen({
       {fixtures.map((fixture) => {
         const homeTeam = getDisplayTeam(fixture, "home", data?.teamMap ?? {});
         const awayTeam = getDisplayTeam(fixture, "away", data?.teamMap ?? {});
-        const stadium = data?.stadiumMap[fixture.stadium_id];
+        const isFinished = fixture.finished === "TRUE";
 
         return (
           <View key={fixture._id} style={styles.fixtureCard}>
@@ -324,36 +325,24 @@ export function FixturesScreen({
             </View>
 
             <View style={styles.fixtureTeamsRow}>
-              {homeTeam.flag ? (
-                <Image
-                  source={{ uri: homeTeam.flag }}
-                  style={styles.fixtureFlagImage}
-                />
-              ) : (
-                <Text style={styles.fixtureFlag}>🏳️</Text>
-              )}
+              <Text style={styles.fixtureFlag}>{homeTeam.flagEmoji}</Text>
               <Text style={styles.fixtureTeamName}>{homeTeam.name}</Text>
             </View>
 
             <View style={styles.fixtureTeamsRow}>
-              {awayTeam.flag ? (
-                <Image
-                  source={{ uri: awayTeam.flag }}
-                  style={styles.fixtureFlagImage}
-                />
-              ) : (
-                <Text style={styles.fixtureFlag}>🏳️</Text>
-              )}
+              <Text style={styles.fixtureFlag}>{awayTeam.flagEmoji}</Text>
               <Text style={styles.fixtureTeamName}>{awayTeam.name}</Text>
             </View>
 
             <View style={styles.fixtureBottomRow}>
               <Text style={styles.fixtureMeta}>
-                {stadium?.fifa_name ?? "TBD"} • {stadium?.city_en ?? "TBD"}
+                {fixture.stadiumName ?? fixture.stadiumCity ?? "TBD"}
               </Text>
-              <Text style={styles.fixtureQuestions}>
-                Skor {fixture.home_score}-{fixture.away_score}
-              </Text>
+              {isFinished ? (
+                <Text style={styles.fixtureQuestions}>
+                  {fixture.home_score}-{fixture.away_score}
+                </Text>
+              ) : null}
             </View>
           </View>
         );
@@ -385,32 +374,25 @@ export function FixturesScreen({
           </View>
 
           {[...selectedGroupTable.teams]
-            .sort((left, right) => Number(right.pts) - Number(left.pts))
-            .map((row, index) => {
-              const team = data?.teamMap[row.team_id];
-
-              return (
-                <View key={row._id} style={styles.groupRow}>
-                  <Text style={styles.groupRank}>{index + 1}</Text>
-                  <View style={styles.groupTeamWrap}>
-                    {team?.flag ? (
-                      <Image
-                        source={{ uri: team.flag }}
-                        style={styles.groupTeamFlag}
-                      />
-                    ) : null}
-                    <Text style={styles.groupTeamName}>
-                      {team?.name_en ?? `Team ${row.team_id}`}
-                    </Text>
-                  </View>
-                  <Text style={styles.groupCell}>{row.mp}</Text>
-                  <Text style={styles.groupCell}>{row.w}</Text>
-                  <Text style={styles.groupCell}>{row.d}</Text>
-                  <Text style={styles.groupCell}>{row.l}</Text>
-                  <Text style={styles.groupCell}>{row.pts}</Text>
+            .sort((left, right) => {
+              const ptsDiff = Number(right.pts) - Number(left.pts);
+              if (ptsDiff !== 0) return ptsDiff;
+              return Number(right.gd) - Number(left.gd);
+            })
+            .map((row, index) => (
+              <View key={row._id} style={styles.groupRow}>
+                <Text style={styles.groupRank}>{index + 1}</Text>
+                <View style={styles.groupTeamWrap}>
+                  <Text style={styles.groupTeamFlag}>{getFlagEmoji(row.team_id)}</Text>
+                  <Text style={styles.groupTeamName}>{row.team_id}</Text>
                 </View>
-              );
-            })}
+                <Text style={styles.groupCell}>{row.mp}</Text>
+                <Text style={styles.groupCell}>{row.w}</Text>
+                <Text style={styles.groupCell}>{row.d}</Text>
+                <Text style={styles.groupCell}>{row.l}</Text>
+                <Text style={styles.groupCell}>{row.pts}</Text>
+              </View>
+            ))}
         </View>
       ) : null}
     </>

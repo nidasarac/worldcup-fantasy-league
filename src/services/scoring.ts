@@ -135,10 +135,17 @@ export function getCorrectAnswer(
     case "first-goal-team":
       if (result.firstGoalTeam === "home") return homeTeamName;
       if (result.firstGoalTeam === "away") return awayTeamName;
+      if (result.firstGoalTeam == null) return null;
+      // "none": gol var ama goals dizisi boştu (eski kayıt) → soruyu atla
+      if ((result.homeScore ?? 0) + (result.awayScore ?? 0) > 0) return null;
       return "Gol olmaz";
     case "first-goal-minute": {
       const min = result.firstGoalMinute;
-      if (min == null) return "Gol olmaz";
+      if (min == null) {
+        if (result.firstGoalTeam == null) return null;
+        if ((result.homeScore ?? 0) + (result.awayScore ?? 0) > 0) return null;
+        return "Gol olmaz";
+      }
       if (min <= 15) return "1-15";
       if (min <= 30) return "16-30";
       if (min <= 45) return "31-45";
@@ -147,12 +154,83 @@ export function getCorrectAnswer(
       return "76+";
     }
     case "most-goals-half": {
-      const first = (result.halfTimeHomeGoals ?? 0) + (result.halfTimeAwayGoals ?? 0);
+      if (result.halfTimeHomeGoals == null || result.halfTimeAwayGoals == null) return null;
+      const first = result.halfTimeHomeGoals + result.halfTimeAwayGoals;
       const second = result.homeScore + result.awayScore - first;
       if (first > second) return "1. Devre";
       if (second > first) return "2. Devre";
       return "Eşit";
     }
+
+    // Zafronix soruları
+    case "total-cards": {
+      const tc = (result.homeYellowCards ?? 0) + (result.awayYellowCards ?? 0)
+               + (result.homeRedCards ?? 0) + (result.awayRedCards ?? 0);
+      if (tc <= 2) return "0-2";
+      if (tc <= 4) return "3-4";
+      if (tc <= 6) return "5-6";
+      return "7+";
+    }
+    case "yellow-cards": {
+      const yc = (result.homeYellowCards ?? 0) + (result.awayYellowCards ?? 0);
+      if (yc <= 1) return "0-1";
+      if (yc <= 3) return "2-3";
+      if (yc <= 5) return "4-5";
+      return "6+";
+    }
+    case "both-teams-carded":
+      return (result.homeYellowCards ?? 0) > 0 && (result.awayYellowCards ?? 0) > 0 ? "Evet" : "Hayır";
+    case "red-card-in-match":
+      return (result.homeRedCards ?? 0) + (result.awayRedCards ?? 0) > 0 ? "Evet" : "Hayır";
+    case "corners-winner": {
+      if (result.homeCorners == null || result.awayCorners == null) return null;
+      if (result.homeCorners > result.awayCorners) return homeTeamName;
+      if (result.awayCorners > result.homeCorners) return awayTeamName;
+      return "Eşit";
+    }
+    case "total-corners": {
+      if (result.homeCorners == null || result.awayCorners == null) return null;
+      const tc = result.homeCorners + result.awayCorners;
+      if (tc <= 4) return "0-4";
+      if (tc <= 8) return "5-8";
+      if (tc <= 12) return "9-12";
+      return "13+";
+    }
+    case "first-card-team": {
+      const fct = result.firstCardTeam;
+      if (fct === "home") return homeTeamName;
+      if (fct === "away") return awayTeamName;
+      return "Kart Çıkmadı";
+    }
+    case "shots-winner": {
+      if (result.homeShots == null || result.awayShots == null) return null;
+      if (result.homeShots > result.awayShots) return homeTeamName;
+      if (result.awayShots > result.homeShots) return awayTeamName;
+      return "Eşit";
+    }
+    case "possession-winner": {
+      if (result.homePossession == null || result.awayPossession == null) return null;
+      if (result.homePossession > result.awayPossession) return homeTeamName;
+      if (result.awayPossession > result.homePossession) return awayTeamName;
+      return "Eşit";
+    }
+    case "total-fouls": {
+      if (result.homeFouls == null || result.awayFouls == null) return null;
+      const tf = result.homeFouls + result.awayFouls;
+      if (tf <= 10) return "0-10";
+      if (tf <= 15) return "11-15";
+      if (tf <= 20) return "16-20";
+      return "21+";
+    }
+    case "first-sub-minute": {
+      const fsm = result.firstSubMinute;
+      if (fsm == null) return "Değişiklik Olmaz";
+      if (fsm <= 30) return "1-30";
+      if (fsm <= 45) return "31-45";
+      if (fsm <= 60) return "46-60";
+      return "61-90";
+    }
+
     default:
       return null;
   }
@@ -261,7 +339,9 @@ export async function settleMatchPredictions(params: {
         );
       });
 
+      const TAM_ISABET_BONUS = 30;
       const isExactHit = scorableCount > 0 && correctCount === scorableCount;
+      if (isExactHit) earned += TAM_ISABET_BONUS;
 
       batch.set(
         predDoc.ref,

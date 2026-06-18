@@ -950,8 +950,9 @@ export function createStyles(colors: ThemePalette) {
       color: colors.heroText,
     },
     historyListRight: {
+      flexDirection: "row",
       alignItems: "center",
-      gap: 10,
+      gap: 8,
     },
     themeSwitchRow: {
       flexDirection: "row",

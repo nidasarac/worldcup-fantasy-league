@@ -67,19 +67,19 @@ function buildClassicQuestions(
       id: "match-result",
       prompt: "Maç sonucu ne olur?",
       options: [homeTeamName, "Beraberlik", awayTeamName],
-      points: 10,
+      points: 6,
     },
     {
       id: "home-goals",
       prompt: `${homeTeamName} kaç gol atar?`,
       options: ["0", "1", "2", "3+"],
-      points: 8,
+      points: 7,
     },
     {
       id: "away-goals",
       prompt: `${awayTeamName} kaç gol atar?`,
       options: ["0", "1", "2", "3+"],
-      points: 8,
+      points: 7,
     },
     {
       id: "total-goals",
@@ -97,7 +97,7 @@ function buildClassicQuestions(
       id: "goal-diff",
       prompt: "Gol farkı kaç olur?",
       options: ["0 (Beraberlik)", "1", "2", "3+"],
-      points: 7,
+      points: 8,
     },
   ];
 }
@@ -145,40 +145,10 @@ const QUESTION_POOL: MatchQuestion[] = [
     points: 9,
   },
   {
-    id: "home-win-nil",
-    prompt: "Ev sahibi gol yemeden kazanır mı?",
-    options: ["Evet", "Hayır"],
-    points: 9,
-  },
-  {
-    id: "away-win-nil",
-    prompt: "Deplasman gol yemeden kazanır mı?",
-    options: ["Evet", "Hayır"],
-    points: 9,
-  },
-  {
     id: "one-goal-diff",
     prompt: "Maç tam 1 gol farkıyla biter mi?",
     options: ["Evet", "Hayır"],
     points: 8,
-  },
-  {
-    id: "three-plus-diff",
-    prompt: "3 veya daha fazla gol farkıyla biter mi?",
-    options: ["Evet", "Hayır"],
-    points: 9,
-  },
-  {
-    id: "home-three-plus",
-    prompt: "Ev sahibi 3 veya daha fazla gol atar mı?",
-    options: ["Atar", "Atmaz"],
-    points: 9,
-  },
-  {
-    id: "away-three-plus",
-    prompt: "Deplasman 3 veya daha fazla gol atar mı?",
-    options: ["Atar", "Atmaz"],
-    points: 9,
   },
   {
     id: "total-exact",
@@ -203,7 +173,7 @@ const QUESTION_POOL: MatchQuestion[] = [
     id: "first-goal-team",
     prompt: "İlk golü hangi takım atar?",
     options: [], // buildMatchQuestions tarafından doldurulur
-    points: 8,
+    points: 10,
   },
   {
     id: "first-goal-minute",
@@ -216,6 +186,43 @@ const QUESTION_POOL: MatchQuestion[] = [
     prompt: "Hangi devre daha golcü olur?",
     options: ["1. Devre", "2. Devre", "Eşit"],
     points: 8,
+  },
+  // Zafronix soruları: kart, şut, top, faul, değişiklik
+  {
+    id: "total-cards",
+    prompt: "Toplam kart sayısı kaç olur?",
+    options: ["0-2", "3-4", "5-6", "7+"],
+    points: 8,
+  },
+  {
+    id: "first-card-team",
+    prompt: "İlk kartı hangi takım alır?",
+    options: [], // buildMatchQuestions tarafından doldurulur
+    points: 8,
+  },
+  {
+    id: "shots-winner",
+    prompt: "Hangi takım daha fazla şut atar?",
+    options: [], // buildMatchQuestions tarafından doldurulur
+    points: 8,
+  },
+  {
+    id: "possession-winner",
+    prompt: "Hangi takım topa daha çok sahip olur?",
+    options: [], // buildMatchQuestions tarafından doldurulur
+    points: 7,
+  },
+  {
+    id: "total-fouls",
+    prompt: "Toplam faul sayısı kaç olur?",
+    options: ["0-10", "11-15", "16-20", "21+"],
+    points: 8,
+  },
+  {
+    id: "first-sub-minute",
+    prompt: "İlk değişiklik kaçıncı dakikada yapılır?",
+    options: ["1-30", "31-45", "46-60", "61-90", "Değişiklik Olmaz"],
+    points: 9,
   },
 ];
 
@@ -230,6 +237,12 @@ export function buildMatchQuestions(
   const poolPicks = pickFromPool(matchId, QUESTION_POOL, 3).map((q) => {
     if (q.id === "first-goal-team") {
       return { ...q, options: [homeTeamName, awayTeamName, "Gol olmaz"] };
+    }
+    if (q.id === "first-card-team") {
+      return { ...q, options: [homeTeamName, awayTeamName, "Kart Çıkmadı"] };
+    }
+    if (q.id === "shots-winner" || q.id === "possession-winner") {
+      return { ...q, options: [homeTeamName, awayTeamName, "Eşit"] };
     }
     return q;
   });

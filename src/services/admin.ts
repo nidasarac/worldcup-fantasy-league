@@ -12,6 +12,7 @@ import {
   writeBatch,
   where,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 import {
   ApiGame,
@@ -177,6 +178,8 @@ export async function syncMatchQuestionsByAdmin(params: {
 export async function settleMatchByAdmin(params: {
   game: ApiGame;
   worldCupData: WorldCupData;
+  manualHomeScore?: number;
+  manualAwayScore?: number;
 }) {
   const db = getFirebaseDb();
   const home = getDisplayTeam(params.game, "home", params.worldCupData.teamMap);
@@ -190,7 +193,30 @@ export async function settleMatchByAdmin(params: {
     await syncMatchQuestionsByAdmin(params);
   }
 
-  const result = buildMatchResultFromGame(params.game, home.name, away.name);
+  const hasManualScore =
+    params.manualHomeScore !== undefined && params.manualAwayScore !== undefined;
+  const gameForResult = hasManualScore
+    ? {
+        ...params.game,
+        home_score: String(params.manualHomeScore),
+        away_score: String(params.manualAwayScore),
+      }
+    : params.game;
+
+  const result = buildMatchResultFromGame(gameForResult, home.name, away.name);
+
+  if (hasManualScore) {
+    await setDoc(
+      doc(db, "matches", params.game.id),
+      {
+        overrideHomeScore: params.manualHomeScore,
+        overrideAwayScore: params.manualAwayScore,
+        scoreManuallyOverridden: true,
+      },
+      { merge: true },
+    );
+  }
+
   await setMatchResult(params.game.id, result);
 
   await setDoc(
@@ -475,6 +501,16 @@ export async function archiveManualTestMatchByAdmin(matchId: string) {
     },
     { merge: true },
   );
+}
+
+// Cloud Function üzerinden settle — possession/shots/corners dahil tam Zafronix verisi kullanır
+export async function settleMatchViaCloudFunction(matchId: string): Promise<{ settledCount: number }> {
+  const { getFirebaseApp } = await import("../lib/firebase");
+  const app = getFirebaseApp();
+  const functions = getFunctions(app, "us-central1");
+  const fn = httpsCallable<{ matchId: string }, { settledCount: number }>(functions, "settleMatch");
+  const result = await fn({ matchId });
+  return result.data;
 }
 
 export async function countPredictionsForMatch(matchId: string) {

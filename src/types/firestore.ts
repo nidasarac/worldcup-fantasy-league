@@ -63,11 +63,25 @@ export type MatchResult = {
   bothTeamsScore: boolean;
   redCard: boolean;
   resolvedAt: string;
-  firstHalfGoals?: number;
-  halfTimeHomeGoals?: number;
-  halfTimeAwayGoals?: number;
-  firstGoalTeam?: string;
-  firstGoalMinute?: number;
+  firstHalfGoals?: number | null;
+  halfTimeHomeGoals?: number | null;
+  halfTimeAwayGoals?: number | null;
+  firstGoalTeam?: string | null;
+  firstGoalMinute?: number | null;
+  homeYellowCards?: number;
+  awayYellowCards?: number;
+  homeRedCards?: number;
+  awayRedCards?: number;
+  homeCorners?: number | null;
+  awayCorners?: number | null;
+  firstCardTeam?: string;
+  homeShots?: number | null;
+  awayShots?: number | null;
+  homePossession?: number | null;
+  awayPossession?: number | null;
+  homeFouls?: number | null;
+  awayFouls?: number | null;
+  firstSubMinute?: number | null;
 };
 
 export type Prediction = {
@@ -79,6 +93,8 @@ export type Prediction = {
   totalPointsAwarded: number;
   isExactHit?: boolean;
   settledAt?: string;
+  homeTeamName?: string;
+  awayTeamName?: string;
 };
 
 export type PredictionAnswer = {

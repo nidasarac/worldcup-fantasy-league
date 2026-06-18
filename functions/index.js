@@ -7,26 +7,30 @@ const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 initializeApp();
 
 const db = getFirestore();
-const API_FOOTBALL_KEY = defineSecret("API_FOOTBALL_KEY");
-
-const WORLD_CUP_BASE_URL = "https://worldcup26.ir";
-const API_FOOTBALL_BASE_URL = "https://api-football-v1.p.rapidapi.com/v3";
-const WORLD_CUP_LEAGUE_ID = 1;
-const WORLD_CUP_SEASON = 2026;
+const ZAFRONIX_API_KEY = defineSecret("ZAFRONIX_API_KEY");
+const ZAFRONIX_BASE_URL = "https://api.zafronix.com/fifa/worldcup/v1";
 
 const TEAM_NAME_TR_MAP = {
+  Algeria: "Cezayir",
   Argentina: "Arjantin",
   Australia: "Avustralya",
   Austria: "Avusturya",
   Belgium: "Belçika",
   "Bosnia and Herzegovina": "Bosna Hersek",
   Brazil: "Brezilya",
-  Canada: "Kanada",
+  "Cabo Verde": "Yeşil Burun Adaları",
   "Cape Verde": "Yeşil Burun Adaları",
+  Canada: "Kanada",
   Colombia: "Kolombiya",
+  "Congo DR": "Kongo DC",
+  "DR Congo": "Kongo DC",
   Croatia: "Hırvatistan",
-  Curacao: "Curacao",
+  "Curaçao": "Curaçao",
+  Curacao: "Curaçao",
+  Czechia: "Çekya",
   "Czech Republic": "Çekya",
+  "Côte d'Ivoire": "Fildişi Sahili",
+  "Ivory Coast": "Fildişi Sahili",
   Ecuador: "Ekvador",
   Egypt: "Mısır",
   England: "İngiltere",
@@ -34,11 +38,13 @@ const TEAM_NAME_TR_MAP = {
   Germany: "Almanya",
   Ghana: "Gana",
   Haiti: "Haiti",
+  "IR Iran": "İran",
   Iran: "İran",
   Iraq: "Irak",
-  "Ivory Coast": "Fildişi Sahili",
-  Jordan: "Ürdün",
   Japan: "Japonya",
+  Jordan: "Ürdün",
+  "Korea Republic": "Güney Kore",
+  "South Korea": "Güney Kore",
   Mexico: "Meksika",
   Morocco: "Fas",
   Netherlands: "Hollanda",
@@ -48,58 +54,30 @@ const TEAM_NAME_TR_MAP = {
   Paraguay: "Paraguay",
   Portugal: "Portekiz",
   Qatar: "Katar",
-  "South Africa": "Güney Afrika",
-  "South Korea": "Güney Kore",
-  Saudi: "Suudi Arabistan",
   "Saudi Arabia": "Suudi Arabistan",
   Scotland: "İskoçya",
   Senegal: "Senegal",
+  "South Africa": "Güney Afrika",
   Spain: "İspanya",
   Sweden: "İsveç",
   Switzerland: "İsviçre",
   Tunisia: "Tunus",
+  "Türkiye": "Türkiye",
   Turkiye: "Türkiye",
+  Turkey: "Türkiye",
   USA: "ABD",
   Uruguay: "Uruguay",
   Uzbekistan: "Özbekistan",
-  "DR Congo": "Kongo DC",
-  Algeria: "Cezayir",
 };
 
-const TEAM_NAME_ALIASES = {
-  usa: ["united states"],
-  "united states": ["usa"],
-  "ivory coast": ["cote d'ivoire", "cotedivoire"],
-  "dr congo": ["congo dr", "democratic republic of congo"],
-  "south korea": ["korea republic", "korea rep"],
-  saudi: ["saudi arabia"],
-  turkiye: ["turkey"],
-};
-
-const STADIUM_TIME_ZONES = {
-  "1": "America/Mexico_City",
-  "2": "America/Mexico_City",
-  "3": "America/Mexico_City",
-  "4": "America/Chicago",
-  "5": "America/Chicago",
-  "6": "America/Chicago",
-  "7": "America/New_York",
-  "8": "America/New_York",
-  "9": "America/New_York",
-  "10": "America/New_York",
-  "11": "America/New_York",
-  "12": "America/Toronto",
-  "13": "America/Vancouver",
-  "14": "America/Los_Angeles",
-  "15": "America/Los_Angeles",
-  "16": "America/Los_Angeles",
-};
+const ADMIN_EMAILS = ["nidasaracc@gmail.com", "nnidasarac@gmail.com"];
 
 function assertAdmin(request) {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Giriş yapman gerekiyor.");
   }
-  if (request.auth.token.admin !== true) {
+  const email = request.auth.token.email;
+  if (request.auth.token.admin !== true && !ADMIN_EMAILS.includes(email)) {
     throw new HttpsError("permission-denied", "Bu işlem için admin yetkisi gerekiyor.");
   }
 }
@@ -108,56 +86,118 @@ function normalizeForMatch(name) {
   return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function teamsMatch(wcName, apiName) {
-  const wc = normalizeForMatch(wcName);
-  const api = normalizeForMatch(apiName);
-  if (wc === api || wc.includes(api) || api.includes(wc)) return true;
-  const aliases = TEAM_NAME_ALIASES[wc] || [];
-  return aliases.some((alias) => {
-    const n = normalizeForMatch(alias);
-    return n === api || api.includes(n) || n.includes(api);
+function parseStage(stage) {
+  if (!stage) return { stage: "GROUP_STAGE", group: "" };
+  if (stage.startsWith("group_")) {
+    return { stage: "GROUP_STAGE", group: stage.replace("group_", "").toUpperCase() };
+  }
+  const map = {
+    r32: "ROUND_OF_32",
+    r16: "ROUND_OF_16",
+    qf: "QUARTER_FINALS",
+    sf: "SEMI_FINALS",
+    final: "FINAL",
+    thirdPlace: "THIRD_PLACE",
+    third_place: "THIRD_PLACE",
+  };
+  return { stage: map[stage] || stage.toUpperCase(), group: "" };
+}
+
+async function zafronixFetch(path) {
+  const key = ZAFRONIX_API_KEY.value();
+  const res = await fetch(`${ZAFRONIX_BASE_URL}${path}`, {
+    headers: { "X-API-Key": key },
   });
-}
-
-function getStadiumTimeZone(stadiumId) {
-  return STADIUM_TIME_ZONES[String(stadiumId)] || "America/New_York";
-}
-
-function formatDateForApiFootball(localDate, stadiumId) {
-  const [datePart, timePart] = String(localDate).split(" ");
-  const [month, day, year] = datePart.split("/").map(Number);
-  const [hour, minute] = timePart.split(":").map(Number);
-  const base = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  const utcDate = base.toISOString().slice(0, 10);
-  const prev = new Date(base.getTime() - 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-  return [utcDate, prev];
-}
-
-async function worldCupFetch(path) {
-  const res = await fetch(`${WORLD_CUP_BASE_URL}${path}`);
-  if (!res.ok) throw new Error(`World Cup API ${res.status}: ${path}`);
+  if (!res.ok) throw new Error(`Zafronix ${res.status}: ${path}`);
   return res.json();
 }
 
-async function apiFootballFetch(path) {
-  const key = API_FOOTBALL_KEY.value();
-  if (!key) throw new Error("API_FOOTBALL_KEY secret eksik.");
-  const res = await fetch(`${API_FOOTBALL_BASE_URL}${path}`, {
-    headers: {
-      "X-RapidAPI-Key": key,
-      "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com",
-    },
-  });
-  if (!res.ok) throw new Error(`API-Football ${res.status}: ${path}`);
-  const data = await res.json();
-  return data.response;
+async function fetchAllMatches() {
+  const data = await zafronixFetch("/matches?year=2026");
+  return data.data || [];
 }
 
-function getStat(stats, type) {
-  const entry = stats.find((s) => s.type === type);
-  return typeof entry?.value === "number" ? entry.value : 0;
+async function fetchSingleMatch(matchId) {
+  const data = await zafronixFetch(`/matches/${matchId}`);
+  return data;
+}
+
+function isFinished(match) {
+  return match.status === "finished";
+}
+
+function buildMatchResultFromZafronix(match, homeDisplayName, awayDisplayName) {
+  const h = match.homeScore ?? 0;
+  const a = match.awayScore ?? 0;
+  const goals = match.goals || [];
+  const cards = match.cards || [];
+  const stats = match.statistics || {};
+
+  // Goals dizisi boş ama maçta gol var → Zafronix golü henüz doldurmamış, null ile işaretle
+  const goalsDataAvailable = goals.length > 0 || (h === 0 && a === 0);
+
+  const firstGoal = goals[0] ?? null;
+  const firstGoalTeam = goalsDataAvailable ? (firstGoal ? firstGoal.team : "none") : null;
+  const firstGoalMinute = goalsDataAvailable ? (firstGoal?.minute ?? null) : null;
+
+  const halfTimeGoals = goals.filter((g) => g.minute <= 45);
+  const halfTimeHomeGoals = goalsDataAvailable ? halfTimeGoals.filter((g) => g.team === "home").length : null;
+  const halfTimeAwayGoals = goalsDataAvailable ? halfTimeGoals.filter((g) => g.team === "away").length : null;
+
+  const homeYellowCards = cards.filter((c) => c.team === "home" && c.color === "yellow").length;
+  const awayYellowCards = cards.filter((c) => c.team === "away" && c.color === "yellow").length;
+  const homeRedCards = cards.filter((c) => c.team === "home" && c.color === "red").length;
+  const awayRedCards = cards.filter((c) => c.team === "away" && c.color === "red").length;
+
+  // İstatistik verisi eksik olabilir — 0 yerine null kullan, getCorrectAnswer null → soruyu atla
+  const homeCorners = stats.home?.corners ?? null;
+  const awayCorners = stats.away?.corners ?? null;
+
+  const firstCard = cards[0] ?? null;
+  const firstCardTeam = firstCard ? firstCard.team : "none";
+
+  const homeShots = stats.home?.shotsTotal ?? null;
+  const awayShots = stats.away?.shotsTotal ?? null;
+  const homePossession = stats.home?.possessionPct ?? null;
+  const awayPossession = stats.away?.possessionPct ?? null;
+  const homeFouls = stats.home?.fouls ?? null;
+  const awayFouls = stats.away?.fouls ?? null;
+
+  const substitutions = match.substitutions || [];
+  const firstSubMinute = substitutions.length > 0 ? (substitutions[0].minute ?? null) : null;
+
+  let winner;
+  if (h > a) winner = homeDisplayName;
+  else if (a > h) winner = awayDisplayName;
+  else winner = "Beraberlik";
+
+  return {
+    homeScore: h,
+    awayScore: a,
+    winner,
+    bothTeamsScore: h > 0 && a > 0,
+    redCard: homeRedCards + awayRedCards > 0,
+    homeYellowCards,
+    awayYellowCards,
+    homeRedCards,
+    awayRedCards,
+    homeCorners,
+    awayCorners,
+    halfTimeHomeGoals,
+    halfTimeAwayGoals,
+    firstHalfGoals: goalsDataAvailable ? (halfTimeHomeGoals ?? 0) + (halfTimeAwayGoals ?? 0) : null,
+    firstGoalTeam,
+    firstGoalMinute,
+    firstCardTeam,
+    homeShots,
+    awayShots,
+    homePossession,
+    awayPossession,
+    homeFouls,
+    awayFouls,
+    firstSubMinute,
+    resolvedAt: new Date().toISOString(),
+  };
 }
 
 function hashMatchId(matchId) {
@@ -189,7 +229,7 @@ function applyMultiplier(questions, multiplier) {
 }
 
 function isTurkeyMatch(homeTeamName, awayTeamName) {
-  return ["Türkiye", "Turkiye"].includes(homeTeamName) || ["Türkiye", "Turkiye"].includes(awayTeamName);
+  return homeTeamName === "Türkiye" || awayTeamName === "Türkiye";
 }
 
 function buildClassicQuestions(homeTeamName, awayTeamName) {
@@ -207,28 +247,31 @@ const QUESTION_POOL = [
   { id: "clean-sheet", prompt: "Gol yemeyen takım olur mu?", options: ["Olur", "Olmaz"], points: 7 },
   { id: "four-plus-goals", prompt: "Maçta 4 veya daha fazla gol olur mu?", options: ["Olur", "Olmaz"], points: 8 },
   { id: "both-score-2plus", prompt: "Her iki takım da en az 2 gol atar mı?", options: ["Evet", "Hayır"], points: 9 },
-  { id: "home-win-nil", prompt: "Ev sahibi gol yemeden kazanır mı?", options: ["Evet", "Hayır"], points: 9 },
-  { id: "away-win-nil", prompt: "Deplasman gol yemeden kazanır mı?", options: ["Evet", "Hayır"], points: 9 },
   { id: "one-goal-diff", prompt: "Maç tam 1 gol farkıyla biter mi?", options: ["Evet", "Hayır"], points: 8 },
-  { id: "three-plus-diff", prompt: "3 veya daha fazla gol farkıyla biter mi?", options: ["Evet", "Hayır"], points: 9 },
-  { id: "home-three-plus", prompt: "Ev sahibi 3 veya daha fazla gol atar mı?", options: ["Atar", "Atmaz"], points: 9 },
-  { id: "away-three-plus", prompt: "Deplasman 3 veya daha fazla gol atar mı?", options: ["Atar", "Atmaz"], points: 9 },
   { id: "total-exact", prompt: "Toplam kaç gol olur? (tam sayı)", options: ["0", "1", "2", "3", "4", "5+"], points: 10 },
   { id: "nil-nil", prompt: "Maç 0–0 biter mi?", options: ["Evet", "Hayır"], points: 10 },
   { id: "over-25", prompt: "Maç 2.5 üstü mü biter?", options: ["Üstü (3+ gol)", "Altı (0–2 gol)"], points: 7 },
   { id: "yellow-cards", prompt: "Toplam sarı kart sayısı?", options: ["0-1", "2-3", "4-5", "6+"], points: 8 },
   { id: "both-teams-carded", prompt: "Her iki takımdan da sarı kart çıkar mı?", options: ["Evet", "Hayır"], points: 7 },
   { id: "red-card-in-match", prompt: "Maçta kırmızı kart çıkar mı?", options: ["Evet", "Hayır"], points: 9 },
+  { id: "total-cards", prompt: "Toplam kart sayısı kaç olur?", options: ["0-2", "3-4", "5-6", "7+"], points: 8 },
   { id: "corners-winner", prompt: "Hangi takım daha fazla köşe vuruşu kullanır?", options: [], points: 8 },
   { id: "total-corners", prompt: "Toplam köşe vuruşu sayısı?", options: ["0-4", "5-8", "9-12", "13+"], points: 9 },
+  { id: "first-card-team", prompt: "İlk kartı hangi takım alır?", options: [], points: 8 },
+  { id: "shots-winner", prompt: "Hangi takım daha fazla şut atar?", options: [], points: 8 },
+  { id: "possession-winner", prompt: "Hangi takım topa daha çok sahip olur?", options: [], points: 7 },
+  { id: "total-fouls", prompt: "Toplam faul sayısı kaç olur?", options: ["0-10", "11-15", "16-20", "21+"], points: 8 },
+  { id: "first-sub-minute", prompt: "İlk değişiklik kaçıncı dakikada yapılır?", options: ["1-30", "31-45", "46-60", "61-90", "Değişiklik Olmaz"], points: 9 },
 ];
 
 function buildMatchQuestions(matchId, homeTeamName, awayTeamName) {
   const classic = buildClassicQuestions(homeTeamName, awayTeamName);
   const poolPicks = pickFromPool(matchId, QUESTION_POOL, 3).map((q) =>
-    q.id === "corners-winner"
-      ? { ...q, options: [homeTeamName, awayTeamName, "Eşit"] }
-      : q,
+    q.id === "first-card-team"
+      ? { ...q, options: [homeTeamName, awayTeamName, "Kart Çıkmadı"] }
+      : ["corners-winner", "shots-winner", "possession-winner"].includes(q.id)
+        ? { ...q, options: [homeTeamName, awayTeamName, "Eşit"] }
+        : q,
   );
   const multiplier = isTurkeyMatch(homeTeamName, awayTeamName) ? 2 : 1;
   return applyMultiplier([...classic, ...poolPicks], multiplier);
@@ -286,6 +329,40 @@ function getCorrectAnswer(questionId, result, homeTeamName, awayTeamName) {
       return h === 0 && a === 0 ? "Evet" : "Hayır";
     case "over-25":
       return h + a >= 3 ? "Üstü (3+ gol)" : "Altı (0–2 gol)";
+    case "first-goal-team":
+      if (result.firstGoalTeam === "home") return homeTeamName;
+      if (result.firstGoalTeam === "away") return awayTeamName;
+      if (result.firstGoalTeam == null) return null;
+      return "Gol olmaz";
+    case "first-goal-minute": {
+      const min = result.firstGoalMinute;
+      if (min == null) {
+        if (result.firstGoalTeam == null) return null;
+        return "Gol olmaz";
+      }
+      if (min <= 15) return "1-15";
+      if (min <= 30) return "16-30";
+      if (min <= 45) return "31-45";
+      if (min <= 60) return "46-60";
+      if (min <= 75) return "61-75";
+      return "76+";
+    }
+    case "most-goals-half": {
+      if (result.halfTimeHomeGoals == null || result.halfTimeAwayGoals == null) return null;
+      const first = result.halfTimeHomeGoals + result.halfTimeAwayGoals;
+      const second = h + a - first;
+      if (first > second) return "1. Devre";
+      if (second > first) return "2. Devre";
+      return "Eşit";
+    }
+    case "total-cards": {
+      const tc = (result.homeYellowCards || 0) + (result.awayYellowCards || 0)
+               + (result.homeRedCards || 0) + (result.awayRedCards || 0);
+      if (tc <= 2) return "0-2";
+      if (tc <= 4) return "3-4";
+      if (tc <= 6) return "5-6";
+      return "7+";
+    }
     case "yellow-cards": {
       const yc = (result.homeYellowCards || 0) + (result.awayYellowCards || 0);
       if (yc <= 1) return "0-1";
@@ -298,120 +375,69 @@ function getCorrectAnswer(questionId, result, homeTeamName, awayTeamName) {
     case "red-card-in-match":
       return (result.homeRedCards || 0) + (result.awayRedCards || 0) > 0 ? "Evet" : "Hayır";
     case "corners-winner": {
-      const hc = result.homeCorners || 0;
-      const ac = result.awayCorners || 0;
-      if (hc > ac) return homeTeamName;
-      if (ac > hc) return awayTeamName;
+      if (result.homeCorners == null || result.awayCorners == null) return null;
+      if (result.homeCorners > result.awayCorners) return homeTeamName;
+      if (result.awayCorners > result.homeCorners) return awayTeamName;
       return "Eşit";
     }
     case "total-corners": {
-      const tc = (result.homeCorners || 0) + (result.awayCorners || 0);
+      if (result.homeCorners == null || result.awayCorners == null) return null;
+      const tc = result.homeCorners + result.awayCorners;
       if (tc <= 4) return "0-4";
       if (tc <= 8) return "5-8";
       if (tc <= 12) return "9-12";
       return "13+";
+    }
+    case "first-card-team": {
+      if (result.firstCardTeam === "home") return homeTeamName;
+      if (result.firstCardTeam === "away") return awayTeamName;
+      return "Kart Çıkmadı";
+    }
+    case "shots-winner": {
+      if (result.homeShots == null || result.awayShots == null) return null;
+      if (result.homeShots > result.awayShots) return homeTeamName;
+      if (result.awayShots > result.homeShots) return awayTeamName;
+      return "Eşit";
+    }
+    case "possession-winner": {
+      if (result.homePossession == null || result.awayPossession == null) return null;
+      if (result.homePossession > result.awayPossession) return homeTeamName;
+      if (result.awayPossession > result.homePossession) return awayTeamName;
+      return "Eşit";
+    }
+    case "total-fouls": {
+      if (result.homeFouls == null || result.awayFouls == null) return null;
+      const tf = result.homeFouls + result.awayFouls;
+      if (tf <= 10) return "0-10";
+      if (tf <= 15) return "11-15";
+      if (tf <= 20) return "16-20";
+      return "21+";
+    }
+    case "first-sub-minute": {
+      const fsm = result.firstSubMinute;
+      if (fsm == null) return "Değişiklik Olmaz";
+      if (fsm <= 30) return "1-30";
+      if (fsm <= 45) return "31-45";
+      if (fsm <= 60) return "46-60";
+      return "61-90";
     }
     default:
       return null;
   }
 }
 
-function buildMatchResultFromGame(game, homeDisplayName, awayDisplayName, stats) {
-  const home = parseInt(game.home_score || "0", 10);
-  const away = parseInt(game.away_score || "0", 10);
-  let winner;
-  if (home > away) winner = homeDisplayName;
-  else if (away > home) winner = awayDisplayName;
-  else winner = "Beraberlik";
-
-  return {
-    homeScore: home,
-    awayScore: away,
-    winner,
-    bothTeamsScore: home > 0 && away > 0,
-    redCard: ((stats?.homeRedCards || 0) + (stats?.awayRedCards || 0)) > 0,
-    homeYellowCards: stats?.homeYellowCards || 0,
-    awayYellowCards: stats?.awayYellowCards || 0,
-    homeRedCards: stats?.homeRedCards || 0,
-    awayRedCards: stats?.awayRedCards || 0,
-    homeCorners: stats?.homeCorners || 0,
-    awayCorners: stats?.awayCorners || 0,
-    halfTimeHomeGoals: stats?.halfTimeHomeGoals,
-    halfTimeAwayGoals: stats?.halfTimeAwayGoals,
-    firstHalfGoals:
-      stats ? (stats.halfTimeHomeGoals || 0) + (stats.halfTimeAwayGoals || 0) : undefined,
-    resolvedAt: new Date().toISOString(),
-  };
-}
-
-async function fetchWorldCupData() {
-  const [gamesRes, teamsRes] = await Promise.all([
-    worldCupFetch("/get/games"),
-    worldCupFetch("/get/teams"),
-  ]);
-  const games = Array.isArray(gamesRes?.games) ? gamesRes.games : [];
-  const teams = Array.isArray(teamsRes?.teams) ? teamsRes.teams : [];
-  const teamMap = Object.fromEntries(teams.map((t) => [t.id, t]));
-  return { games, teamMap };
-}
-
-function getDisplayTeam(game, side, teamMap) {
-  const teamId = side === "home" ? game.home_team_id : game.away_team_id;
-  const fallbackLabel = side === "home" ? game.home_team_label : game.away_team_label;
-  const team = teamId ? teamMap[teamId] : undefined;
-  if (team) {
-    return {
-      name: TEAM_NAME_TR_MAP[team.name_en] || team.name_en,
-      flag: team.flag || "",
-    };
-  }
-  return { name: fallbackLabel || "TBD", flag: "" };
-}
-
-async function fetchMatchStats(homeTeamNameEn, awayTeamNameEn, localDate, stadiumId) {
-  const dates = formatDateForApiFootball(localDate, stadiumId);
-  for (const date of dates) {
-    const fixtures = await apiFootballFetch(
-      `/fixtures?league=${WORLD_CUP_LEAGUE_ID}&season=${WORLD_CUP_SEASON}&date=${date}`,
-    );
-
-    const fixture = fixtures.find(
-      (f) =>
-        teamsMatch(homeTeamNameEn, f.teams.home.name) &&
-        teamsMatch(awayTeamNameEn, f.teams.away.name),
-    );
-
-    if (!fixture) continue;
-
-    const teamStats = await apiFootballFetch(
-      `/fixtures/statistics?fixture=${fixture.fixture.id}`,
-    );
-
-    if (teamStats.length < 2) return null;
-
-    const homeStats = teamStats.find((s) => teamsMatch(homeTeamNameEn, s.team.name));
-    const awayStats = teamStats.find((s) => teamsMatch(awayTeamNameEn, s.team.name));
-    if (!homeStats || !awayStats) return null;
-
-    return {
-      homeYellowCards: getStat(homeStats.statistics, "Yellow Cards"),
-      awayYellowCards: getStat(awayStats.statistics, "Yellow Cards"),
-      homeRedCards: getStat(homeStats.statistics, "Red Cards"),
-      awayRedCards: getStat(awayStats.statistics, "Red Cards"),
-      homeCorners: getStat(homeStats.statistics, "Corner Kicks"),
-      awayCorners: getStat(awayStats.statistics, "Corner Kicks"),
-      halfTimeHomeGoals: fixture.score.halftime.home || 0,
-      halfTimeAwayGoals: fixture.score.halftime.away || 0,
-      fixtureId: fixture.fixture.id,
-    };
-  }
-  return null;
-}
-
 async function getQuestionsForMatch(matchId, homeTeamName, awayTeamName) {
   const snapshot = await db.collection("matches").doc(matchId).collection("questions").get();
   if (!snapshot.empty) {
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((doc) => {
+      const data = doc.data();
+      // Firestore sorular points'i scoring.points altında saklar, normalize et
+      return {
+        id: doc.id,
+        ...data,
+        points: data.points ?? data.scoring?.points ?? 0,
+      };
+    });
   }
   return buildMatchQuestions(matchId, homeTeamName, awayTeamName);
 }
@@ -442,48 +468,34 @@ async function recomputeLeagueRanks(leagueId) {
   await batch.commit();
 }
 
-async function settleMatchCore(matchId) {
-  const { games, teamMap } = await fetchWorldCupData();
-  const game = games.find((item) => String(item.id) === String(matchId));
-  if (!game) {
-    throw new Error("Maç bulunamadı.");
-  }
-  if (game.finished !== "TRUE") {
+async function settleMatchCore(match, force = false) {
+  if (!isFinished(match)) {
     throw new Error("Maç henüz tamamlanmadı.");
   }
 
-  const homeDisplay = getDisplayTeam(game, "home", teamMap);
-  const awayDisplay = getDisplayTeam(game, "away", teamMap);
-  const homeTeam = teamMap[game.home_team_id];
-  const awayTeam = teamMap[game.away_team_id];
-  const homeNameEn = homeTeam?.name_en || homeDisplay.name;
-  const awayNameEn = awayTeam?.name_en || awayDisplay.name;
+  const homeTeamName = TEAM_NAME_TR_MAP[match.homeTeam] || match.homeTeam;
+  const awayTeamName = TEAM_NAME_TR_MAP[match.awayTeam] || match.awayTeam;
+  const matchId = match.id;
 
-  const stats = await fetchMatchStats(
-    homeNameEn,
-    awayNameEn,
-    game.local_date,
-    game.stadium_id,
-  );
-  if (!stats) {
-    throw new Error("API-Football istatistikleri henüz hazır değil.");
-  }
+  const result = buildMatchResultFromZafronix(match, homeTeamName, awayTeamName);
+  await db.collection("matches").doc(matchId).collection("result").doc("final").set(result);
 
-  const result = buildMatchResultFromGame(game, homeDisplay.name, awayDisplay.name, stats);
-  await db.collection("matches").doc(String(matchId)).collection("result").doc("final").set(result, { merge: true });
-
-  const questions = await getQuestionsForMatch(String(matchId), homeDisplay.name, awayDisplay.name);
+  const questions = await getQuestionsForMatch(matchId, homeTeamName, awayTeamName);
   const pointsMap = Object.fromEntries(questions.map((q) => [q.id, q.points || 0]));
 
-  const predictionsSnapshot = await db
-    .collectionGroup("predictions")
-    .where("matchId", "==", String(matchId))
-    .where("status", "==", "submitted")
-    .get();
-
-  const userPredictions = predictionsSnapshot.docs.filter((doc) =>
-    doc.ref.path.startsWith("users/"),
+  const statuses = force ? ["submitted", "settled"] : ["submitted"];
+  const snapshots = await Promise.all(
+    statuses.map((status) =>
+      db.collectionGroup("predictions")
+        .where("matchId", "==", matchId)
+        .where("status", "==", status)
+        .get()
+    )
   );
+
+  const userPredictions = snapshots
+    .flatMap((s) => s.docs)
+    .filter((doc) => doc.ref.path.startsWith("users/"));
 
   const affectedLeagueIds = new Set();
   let settledCount = 0;
@@ -491,50 +503,44 @@ async function settleMatchCore(matchId) {
   for (const predDoc of userPredictions) {
     const prediction = predDoc.data();
     const userId = prediction.userId;
+    const oldPoints = force ? (prediction.totalPointsAwarded || 0) : 0;
+    const oldIsExactHit = force ? (prediction.isExactHit || false) : false;
     const answersSnapshot = await predDoc.ref.collection("answers").get();
 
+    const TAM_ISABET_BONUS = 30;
     let earned = 0;
-    let allCorrect = answersSnapshot.size > 0;
+    let scoreableCount = 0;
+    let correctCount = 0;
 
     for (const answerDoc of answersSnapshot.docs) {
       const answer = answerDoc.data();
-      const correct = getCorrectAnswer(
-        answerDoc.id,
-        result,
-        homeDisplay.name,
-        awayDisplay.name,
-      );
+      const correct = getCorrectAnswer(answerDoc.id, result, homeTeamName, awayTeamName);
 
       if (correct == null) {
-        allCorrect = false;
-        continue;
+        continue; // Veri eksik → atla, tam isabet'i etkileme
       }
 
+      scoreableCount++;
       const isCorrect = answer.selectedValue === correct;
       const pts = isCorrect ? (pointsMap[answerDoc.id] || 0) : 0;
       earned += pts;
-      if (!isCorrect) {
-        allCorrect = false;
-      }
+      if (isCorrect) correctCount++;
 
       await answerDoc.ref.set(
-        {
-          resultStatus: isCorrect ? "correct" : "wrong",
-          awardedPoints: pts,
-        },
+        { resultStatus: isCorrect ? "correct" : "wrong", awardedPoints: pts },
         { merge: true },
       );
     }
 
+    const allCorrect = scoreableCount > 0 && correctCount === scoreableCount;
+    if (allCorrect) earned += TAM_ISABET_BONUS;
+
     await predDoc.ref.set(
-      {
-        status: "settled",
-        totalPointsAwarded: earned,
-        settledAt: FieldValue.serverTimestamp(),
-      },
+      { status: "settled", totalPointsAwarded: earned, isExactHit: allCorrect, settledAt: FieldValue.serverTimestamp() },
       { merge: true },
     );
 
+    const pointsDelta = earned - oldPoints;
     const membershipsSnapshot = await db
       .collectionGroup("members")
       .where("userId", "==", userId)
@@ -543,13 +549,10 @@ async function settleMatchCore(matchId) {
     for (const memberDoc of membershipsSnapshot.docs) {
       const leagueId = memberDoc.ref.parent.parent.id;
       affectedLeagueIds.add(leagueId);
-      await memberDoc.ref.set(
-        {
-          totalPoints: FieldValue.increment(earned),
-          ...(allCorrect ? { exactHits: FieldValue.increment(1) } : {}),
-        },
-        { merge: true },
-      );
+      const memberUpdate = { totalPoints: FieldValue.increment(pointsDelta) };
+      if (!oldIsExactHit && allCorrect) memberUpdate.exactHits = FieldValue.increment(1);
+      if (oldIsExactHit && !allCorrect) memberUpdate.exactHits = FieldValue.increment(-1);
+      await memberDoc.ref.set(memberUpdate, { merge: true });
     }
 
     settledCount += 1;
@@ -559,21 +562,104 @@ async function settleMatchCore(matchId) {
     await recomputeLeagueRanks(leagueId);
   }
 
-  return {
-    matchId: String(matchId),
-    settledCount,
-    affectedLeagueCount: affectedLeagueIds.size,
-  };
+  return { matchId, settledCount, affectedLeagueCount: affectedLeagueIds.size };
 }
 
-exports.settleMatch = onCall({ secrets: [API_FOOTBALL_KEY] }, async (request) => {
+// Tüm maçları Firestore'a yazar, bitmiş olanları settle eder (her 30 dk)
+exports.syncMatchData = onSchedule(
+  { schedule: "every 30 minutes", timeZone: "Europe/Istanbul", secrets: [ZAFRONIX_API_KEY] },
+  async () => {
+    const matches = await fetchAllMatches();
+    const now = new Date();
+
+    const batch = db.batch();
+    for (const match of matches) {
+      if (!match.id) continue;
+      const kickoff = new Date(match.kickoffUtc);
+      const opensAt = new Date(kickoff.getTime() - 24 * 60 * 60 * 1000);
+      const locksAt = new Date(kickoff.getTime() - 15 * 60 * 1000);
+
+      let status;
+      if (isFinished(match)) status = "finished";
+      else if (now >= locksAt) status = "locked";
+      else if (now >= opensAt) status = "open";
+      else status = "upcoming";
+
+      const { stage, group } = parseStage(match.stage);
+      const homeTeamName = TEAM_NAME_TR_MAP[match.homeTeam] || match.homeTeam || "TBD";
+      const awayTeamName = TEAM_NAME_TR_MAP[match.awayTeam] || match.awayTeam || "TBD";
+
+      batch.set(
+        db.collection("matches").doc(match.id),
+        {
+          externalMatchId: match.id,
+          stage,
+          group,
+          matchday: String(match.matchNo || ""),
+          homeTeamId: normalizeForMatch(match.homeTeam),
+          awayTeamId: normalizeForMatch(match.awayTeam),
+          homeTeamName,
+          awayTeamName,
+          stadiumId: match.stadiumId || "",
+          stadiumName: match.stadium || "",
+          kickoffAt: match.kickoffUtc,
+          opensAt: opensAt.toISOString(),
+          locksAt: locksAt.toISOString(),
+          status,
+          homeScore: match.homeScore ?? null,
+          awayScore: match.awayScore ?? null,
+        },
+        { merge: true },
+      );
+    }
+    await batch.commit();
+
+    // Bitmiş maçları settle et (kickoff'tan 3 saat sonra)
+    const SETTLE_DELAY_MS = 3 * 60 * 60 * 1000;
+    const finished = matches.filter(isFinished);
+    for (const match of finished) {
+      const kickoff = new Date(match.kickoffUtc);
+      if (now.getTime() - kickoff.getTime() < SETTLE_DELAY_MS) continue;
+
+      // Firestore'dan override skor ve result durumunu paralel oku
+      const [matchDoc, resultDoc, pendingSnap] = await Promise.all([
+        db.collection("matches").doc(match.id).get(),
+        db.collection("matches").doc(match.id).collection("result").doc("final").get(),
+        db.collectionGroup("predictions")
+          .where("matchId", "==", match.id)
+          .where("status", "==", "submitted")
+          .limit(1)
+          .get(),
+      ]);
+
+      // Result zaten var ve bekleyen tahmin yok → atla
+      const hasPendingUserPredictions = pendingSnap.docs.some((d) => d.ref.path.startsWith("users/"));
+      if (resultDoc.exists && !hasPendingUserPredictions) continue;
+
+      // Manuel skor override varsa uygula
+      const firestoreData = matchDoc.exists ? matchDoc.data() : {};
+      const matchWithOverride = firestoreData.scoreManuallyOverridden
+        ? { ...match, homeScore: firestoreData.overrideHomeScore, awayScore: firestoreData.overrideAwayScore }
+        : match;
+
+      try {
+        await settleMatchCore(matchWithOverride);
+      } catch (e) {
+        console.error(`settle failed for ${match.id}:`, e.message);
+      }
+    }
+  },
+);
+
+// Admin: belirli bir maçı settle et
+exports.settleMatch = onCall({ secrets: [ZAFRONIX_API_KEY] }, async (request) => {
   assertAdmin(request);
   const matchId = request.data?.matchId;
-  if (!matchId) {
-    throw new HttpsError("invalid-argument", "matchId zorunlu.");
-  }
+  if (!matchId) throw new HttpsError("invalid-argument", "matchId zorunlu.");
+
   try {
-    return await settleMatchCore(String(matchId));
+    const match = await fetchSingleMatch(matchId);
+    return await settleMatchCore(match, true); // force=true: settled tahminleri de yeniden puanlar
   } catch (error) {
     throw new HttpsError(
       "internal",
@@ -582,57 +668,48 @@ exports.settleMatch = onCall({ secrets: [API_FOOTBALL_KEY] }, async (request) =>
   }
 });
 
-exports.syncFinishedMatches = onCall({ secrets: [API_FOOTBALL_KEY] }, async (request) => {
+// Admin: bitmiş tüm maçları settle et
+exports.syncFinishedMatches = onCall({ secrets: [ZAFRONIX_API_KEY] }, async (request) => {
   assertAdmin(request);
-  const { games } = await fetchWorldCupData();
-  const finishedGames = games.filter((game) => game.finished === "TRUE");
+  const matches = await fetchAllMatches();
+  const finished = matches.filter(isFinished);
   const settled = [];
 
-  for (const game of finishedGames) {
+  for (const match of finished) {
     const existing = await db
       .collection("matches")
-      .doc(String(game.id))
+      .doc(match.id)
       .collection("result")
       .doc("final")
       .get();
-
     if (existing.exists) continue;
 
     try {
-      const result = await settleMatchCore(String(game.id));
-      settled.push(result.matchId);
-    } catch {
-      // Sessiz geç; sonraki turda tekrar denenecek
+      await settleMatchCore(match);
+      settled.push(match.id);
+    } catch (e) {
+      console.error(`settle failed for ${match.id}:`, e.message);
     }
   }
 
-  return {
-    settledMatchIds: settled,
-    settledCount: settled.length,
-  };
+  return { settledMatchIds: settled, settledCount: settled.length };
 });
 
-exports.syncMatchQuestions = onCall(async (request) => {
+// Admin: belirli bir maç için soruları oluştur
+exports.syncMatchQuestions = onCall({ secrets: [ZAFRONIX_API_KEY] }, async (request) => {
   assertAdmin(request);
   const matchId = request.data?.matchId;
-  if (!matchId) {
-    throw new HttpsError("invalid-argument", "matchId zorunlu.");
-  }
+  if (!matchId) throw new HttpsError("invalid-argument", "matchId zorunlu.");
 
-  const { games, teamMap } = await fetchWorldCupData();
-  const game = games.find((item) => String(item.id) === String(matchId));
-  if (!game) {
-    throw new HttpsError("not-found", "Maç bulunamadı.");
-  }
-
-  const homeDisplay = getDisplayTeam(game, "home", teamMap);
-  const awayDisplay = getDisplayTeam(game, "away", teamMap);
-  const questions = buildMatchQuestions(String(matchId), homeDisplay.name, awayDisplay.name);
+  const match = await fetchSingleMatch(matchId);
+  const homeTeamName = TEAM_NAME_TR_MAP[match.homeTeam] || match.homeTeam;
+  const awayTeamName = TEAM_NAME_TR_MAP[match.awayTeam] || match.awayTeam;
+  const questions = buildMatchQuestions(matchId, homeTeamName, awayTeamName);
 
   const batch = db.batch();
   questions.forEach((question, index) => {
     batch.set(
-      db.collection("matches").doc(String(matchId)).collection("questions").doc(question.id),
+      db.collection("matches").doc(matchId).collection("questions").doc(question.id),
       {
         type: question.id,
         label: question.prompt,
@@ -640,44 +717,12 @@ exports.syncMatchQuestions = onCall(async (request) => {
         sortOrder: index + 1,
         required: true,
         status: "active",
-        scoring: {
-          mode: "exact",
-          points: question.points,
-        },
+        scoring: { mode: "exact", points: question.points },
       },
       { merge: true },
     );
   });
   await batch.commit();
 
-  return { matchId: String(matchId), questionCount: questions.length };
+  return { matchId, questionCount: questions.length };
 });
-
-exports.syncFinishedMatchesScheduled = onSchedule(
-  {
-    schedule: "every 15 minutes",
-    timeZone: "Europe/Istanbul",
-    secrets: [API_FOOTBALL_KEY],
-  },
-  async () => {
-    const { games } = await fetchWorldCupData();
-    const finishedGames = games.filter((game) => game.finished === "TRUE");
-
-    for (const game of finishedGames) {
-      const existing = await db
-        .collection("matches")
-        .doc(String(game.id))
-        .collection("result")
-        .doc("final")
-        .get();
-
-      if (existing.exists) continue;
-
-      try {
-        await settleMatchCore(String(game.id));
-      } catch {
-        // Sonraki schedule turunda tekrar denenecek
-      }
-    }
-  },
-);

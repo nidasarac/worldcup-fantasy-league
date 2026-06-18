@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
 import { User } from "firebase/auth";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, Text, View } from "react-native";
+import { Animated, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAutoSettle } from "./src/hooks/useAutoSettle";
@@ -205,6 +205,7 @@ function TabContent({
   leaderboardError,
   onRefreshWorldCupData,
   onLeagueRefresh,
+  leagueRefreshKey,
 }: {
   activeTab: TabKey;
   styles: ReturnType<typeof createStyles>;
@@ -233,6 +234,7 @@ function TabContent({
   leaderboardError: string | null;
   onRefreshWorldCupData: () => void;
   onLeagueRefresh: () => void;
+  leagueRefreshKey: number;
 }) {
   const content = useMemo(() => {
     switch (activeTab) {
@@ -291,6 +293,7 @@ function TabContent({
             theme={theme}
             user={user}
             worldCupData={data}
+            leagueRefreshKey={leagueRefreshKey}
           />
         ) : (
           <ProfileScreen
@@ -442,9 +445,17 @@ export default function App() {
     setLeagueRefreshKey((current) => current + 1);
   };
 
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    refreshLeagueData();
+    refreshWorldCupData();
+    setTimeout(() => setPullRefreshing(false), 1200);
+  };
+
   // Auto-settle yalnızca admin kullanıcıda çalışır —
   // Firestore kuralları matches/*/result ve questions yazmayı sadece admin'e izin verir
-  const isAdmin = authSession.user?.email === "nidasaracc@gmail.com";
+  const isAdmin = ["nidasaracc@gmail.com", "nnidasarac@gmail.com"].includes(authSession.user?.email ?? "");
   useAutoSettle(isAdmin ? data : null, refreshLeagueData);
 
   // Maç verisi geldiğinde bildirimleri planla
@@ -526,6 +537,12 @@ export default function App() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={pullRefreshing}
+              onRefresh={handlePullRefresh}
+            />
+          }
         >
           <AppHeader
             activeTab={activeTab}
@@ -567,6 +584,7 @@ export default function App() {
             leaderboardError={leagueMembers.error}
             onRefreshWorldCupData={refreshWorldCupData}
             onLeagueRefresh={refreshLeagueData}
+            leagueRefreshKey={leagueRefreshKey}
           />
         </ScrollView>
 
