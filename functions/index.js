@@ -234,12 +234,12 @@ function isTurkeyMatch(homeTeamName, awayTeamName) {
 
 function buildClassicQuestions(homeTeamName, awayTeamName) {
   return [
-    { id: "match-result", prompt: "Maç sonucu ne olur?", options: [homeTeamName, "Beraberlik", awayTeamName], points: 10 },
-    { id: "home-goals", prompt: `${homeTeamName} kaç gol atar?`, options: ["0", "1", "2", "3+"], points: 8 },
-    { id: "away-goals", prompt: `${awayTeamName} kaç gol atar?`, options: ["0", "1", "2", "3+"], points: 8 },
+    { id: "match-result", prompt: "Maç sonucu ne olur?", options: [homeTeamName, "Beraberlik", awayTeamName], points: 6 },
+    { id: "home-goals", prompt: `${homeTeamName} kaç gol atar?`, options: ["0", "1", "2", "3+"], points: 7 },
+    { id: "away-goals", prompt: `${awayTeamName} kaç gol atar?`, options: ["0", "1", "2", "3+"], points: 7 },
     { id: "total-goals", prompt: "Toplam gol sayısı?", options: ["0–1", "2–3", "4–5", "6+"], points: 8 },
     { id: "both-score", prompt: "Her iki takım da gol atar mı?", options: ["Evet", "Hayır"], points: 6 },
-    { id: "goal-diff", prompt: "Gol farkı kaç olur?", options: ["0 (Beraberlik)", "1", "2", "3+"], points: 7 },
+    { id: "goal-diff", prompt: "Gol farkı kaç olur?", options: ["0 (Beraberlik)", "1", "2", "3+"], points: 8 },
   ];
 }
 
