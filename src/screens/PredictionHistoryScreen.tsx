@@ -379,12 +379,13 @@ export function PredictionHistoryScreen({
                   const selectedValue = answer?.selectedValue ?? null;
                   const correctValue =
                     historyResult && selectedHistoryHome && selectedHistoryAway
-                      ? getCorrectAnswer(
-                          question.id,
-                          historyResult,
-                          selectedHistoryHome.name,
-                          selectedHistoryAway.name,
-                        )
+                      ? (historyResult.manualAnswerOverrides?.[question.id] ??
+                          getCorrectAnswer(
+                            question.id,
+                            historyResult,
+                            selectedHistoryHome.name,
+                            selectedHistoryAway.name,
+                          ))
                       : null;
 
                   return (

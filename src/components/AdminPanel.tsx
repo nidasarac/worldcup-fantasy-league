@@ -204,7 +204,12 @@ export function AdminPanel({
         { manualAnswerOverrides: toSave },
         { merge: true },
       );
+      const game = overrideGame;
       setOverrideGame(null);
+      // Override kaydedildikten hemen sonra yeniden puanla
+      await handleFetchAndSettle(game);
+      onLeagueRefresh();
+      await loadStatuses();
     } catch (e) {
       setOverrideError("Kaydedilemedi.");
     } finally {
@@ -466,7 +471,7 @@ export function AdminPanel({
                 {overrideSaving ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.modalSubmitButtonText}>Kaydet</Text>
+                  <Text style={styles.modalSubmitButtonText}>Kaydet ve Yeniden Puanla</Text>
                 )}
               </Pressable>
             </ScrollView>
