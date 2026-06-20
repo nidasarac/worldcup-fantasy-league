@@ -82,6 +82,7 @@ export type MatchResult = {
   homeFouls?: number | null;
   awayFouls?: number | null;
   firstSubMinute?: number | null;
+  manualAnswerOverrides?: Record<string, string>;
 };
 
 export type Prediction = {

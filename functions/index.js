@@ -477,7 +477,9 @@ async function settleMatchCore(match, force = false) {
   const awayTeamName = TEAM_NAME_TR_MAP[match.awayTeam] || match.awayTeam;
   const matchId = match.id;
 
-  const result = buildMatchResultFromZafronix(match, homeTeamName, awayTeamName);
+  const existingResultDoc = await db.collection("matches").doc(matchId).collection("result").doc("final").get();
+  const manualAnswerOverrides = existingResultDoc.exists ? (existingResultDoc.data().manualAnswerOverrides ?? {}) : {};
+  const result = { ...buildMatchResultFromZafronix(match, homeTeamName, awayTeamName), manualAnswerOverrides };
   await db.collection("matches").doc(matchId).collection("result").doc("final").set(result);
 
   const questions = await getQuestionsForMatch(matchId, homeTeamName, awayTeamName);
@@ -514,7 +516,7 @@ async function settleMatchCore(match, force = false) {
 
     for (const answerDoc of answersSnapshot.docs) {
       const answer = answerDoc.data();
-      const correct = getCorrectAnswer(answerDoc.id, result, homeTeamName, awayTeamName);
+      const correct = result.manualAnswerOverrides?.[answerDoc.id] ?? getCorrectAnswer(answerDoc.id, result, homeTeamName, awayTeamName);
 
       if (correct == null) {
         continue; // Veri eksik → atla, tam isabet'i etkileme

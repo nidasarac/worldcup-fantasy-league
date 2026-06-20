@@ -303,12 +303,9 @@ export async function settleMatchPredictions(params: {
       answersSnapshot.docs.forEach((answerDoc) => {
         const answer = answerDoc.data() as PredictionAnswer;
 
-        const correct = getCorrectAnswer(
-          answerDoc.id,
-          matchResult,
-          homeTeamName,
-          awayTeamName,
-        );
+        const correct =
+          matchResult.manualAnswerOverrides?.[answerDoc.id] ??
+          getCorrectAnswer(answerDoc.id, matchResult, homeTeamName, awayTeamName);
 
         if (correct === null) {
           // Artık geçersiz soru (eski API soruları) — puanı sıfırla

@@ -1,17 +1,21 @@
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { collection, doc, getDocs, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 import { ApiGame, getDisplayTeam, WorldCupData } from "../api/worldCup";
+import { getFirebaseDb } from "../lib/firebase";
 import {
   AdminMatchStatus,
   getAdminMatchStatus,
-  settleMatchByAdmin,
   settleMatchViaCloudFunction,
   syncFinishedMatchesByAdmin,
-  syncMatchQuestionsByAdmin,
 } from "../services/admin";
+import { MatchQuestion } from "../services/questions";
+import { getCorrectAnswer } from "../services/scoring";
 import { AppStyles } from "../styles";
 import { ThemePalette } from "../theme";
+import { MatchResult } from "../types/firestore";
 
 type MatchState = {
   status: "idle" | "fetching" | "settling" | "done" | "error";
@@ -35,7 +39,15 @@ export function AdminPanel({
   const [syncingFinished, setSyncingFinished] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [loadingStatuses, setLoadingStatuses] = useState(false);
-  const [manualScoreOverrides, setManualScoreOverrides] = useState<Record<string, { home: string; away: string }>>({});
+
+  // Cevap düzenleme modal state
+  const [overrideGame, setOverrideGame] = useState<ApiGame | null>(null);
+  const [overrideQuestions, setOverrideQuestions] = useState<MatchQuestion[]>([]);
+  const [overrideAnswers, setOverrideAnswers] = useState<Record<string, string>>({});
+  const [overrideComputedAnswers, setOverrideComputedAnswers] = useState<Record<string, string>>({});
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const [overrideSaving, setOverrideSaving] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
 
   const setMatchState = (id: string, state: MatchState) =>
     setMatchStates((prev) => ({ ...prev, [id]: state }));
@@ -78,33 +90,12 @@ export function AdminPanel({
       message: "Maç sonucu ve puanlama işleniyor…",
     });
 
-    const override = getManualScore(game.id);
-    const manualHomeScore = override.home !== "" ? parseInt(override.home, 10) : undefined;
-    const manualAwayScore = override.away !== "" ? parseInt(override.away, 10) : undefined;
-    const hasManualOverride = manualHomeScore !== undefined && manualAwayScore !== undefined;
-
     try {
-      if (hasManualOverride) {
-        // Manuel skor override varsa client-side path (CF skor override desteklemiyor)
-        await syncMatchQuestionsByAdmin({ game, worldCupData: worldCupData! });
-        const { settledCount } = await settleMatchByAdmin({
-          game,
-          worldCupData: worldCupData!,
-          manualHomeScore,
-          manualAwayScore,
-        });
-        setMatchState(game.id, {
-          status: "done",
-          message: `Tamamlandı (manuel skor). ${settledCount} tahmin puanlandı.`,
-        });
-      } else {
-        // Cloud Function: Zafronix'ten tam veri çeker (possession, shots, corners dahil)
-        const { settledCount } = await settleMatchViaCloudFunction(game.id);
-        setMatchState(game.id, {
-          status: "done",
-          message: `Tamamlandı. ${settledCount} tahmin puanlandı.`,
-        });
-      }
+      const { settledCount } = await settleMatchViaCloudFunction(game.id);
+      setMatchState(game.id, {
+        status: "done",
+        message: `Tamamlandı. ${settledCount} tahmin puanlandı.`,
+      });
       onLeagueRefresh();
       await loadStatuses();
     } catch (err) {
@@ -143,12 +134,83 @@ export function AdminPanel({
     }
   };
 
-  const getManualScore = (id: string) => manualScoreOverrides[id] ?? { home: "", away: "" };
-  const setManualScore = (id: string, key: "home" | "away", val: string) =>
-    setManualScoreOverrides((prev) => ({
-      ...prev,
-      [id]: { ...getManualScore(id), [key]: val },
-    }));
+  const handleOpenAnswerOverride = async (game: ApiGame) => {
+    setOverrideGame(game);
+    setOverrideLoading(true);
+    setOverrideError(null);
+    setOverrideAnswers({});
+    setOverrideComputedAnswers({});
+    setOverrideQuestions([]);
+
+    try {
+      const db = getFirebaseDb();
+      const homeTeam = worldCupData
+        ? getDisplayTeam(game, "home", worldCupData.teamMap).name
+        : game.home_team_label ?? "Ev";
+      const awayTeam = worldCupData
+        ? getDisplayTeam(game, "away", worldCupData.teamMap).name
+        : game.away_team_label ?? "Dep";
+
+      const [questionsSnap, resultDoc] = await Promise.all([
+        getDocs(collection(db, "matches", game.id, "questions")),
+        getDoc(doc(db, "matches", game.id, "result", "final")),
+      ]);
+
+      const result = resultDoc.exists() ? (resultDoc.data() as MatchResult) : null;
+      const existingOverrides: Record<string, string> = result?.manualAnswerOverrides ?? {};
+
+      const questions: MatchQuestion[] = questionsSnap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          prompt: data.prompt ?? data.label ?? "",
+          options: data.options ?? [],
+          points: data.points ?? data.scoring?.points ?? 0,
+        };
+      });
+
+      const computed: Record<string, string> = {};
+      if (result) {
+        for (const q of questions) {
+          const ans = getCorrectAnswer(q.id, result, homeTeam, awayTeam);
+          if (ans !== null) computed[q.id] = ans;
+        }
+      }
+
+      setOverrideQuestions(questions);
+      setOverrideComputedAnswers(computed);
+      setOverrideAnswers({ ...computed, ...existingOverrides });
+    } catch (e) {
+      setOverrideError("Sorular yüklenemedi.");
+    } finally {
+      setOverrideLoading(false);
+    }
+  };
+
+  const handleSaveOverrides = async () => {
+    if (!overrideGame) return;
+    setOverrideSaving(true);
+    setOverrideError(null);
+    try {
+      const db = getFirebaseDb();
+      const toSave: Record<string, string> = {};
+      for (const [qId, selected] of Object.entries(overrideAnswers)) {
+        if (selected !== overrideComputedAnswers[qId]) {
+          toSave[qId] = selected;
+        }
+      }
+      await setDoc(
+        doc(db, "matches", overrideGame.id, "result", "final"),
+        { manualAnswerOverrides: toSave },
+        { merge: true },
+      );
+      setOverrideGame(null);
+    } catch (e) {
+      setOverrideError("Kaydedilemedi.");
+    } finally {
+      setOverrideSaving(false);
+    }
+  };
 
   const summary = useMemo(() => {
     const statuses = Object.values(statusMap);
@@ -158,6 +220,13 @@ export function AdminPanel({
     const settled = statuses.filter((item) => item.settledPredictionCount > 0).length;
     return { waiting, settled };
   }, [statusMap]);
+
+  const overrideHomeTeam = overrideGame && worldCupData
+    ? getDisplayTeam(overrideGame, "home", worldCupData.teamMap).name
+    : overrideGame?.home_team_label ?? "";
+  const overrideAwayTeam = overrideGame && worldCupData
+    ? getDisplayTeam(overrideGame, "away", worldCupData.teamMap).name
+    : overrideGame?.away_team_label ?? "";
 
   return (
     <View style={styles.settingsPanel}>
@@ -208,7 +277,6 @@ export function AdminPanel({
       ) : null}
 
       {finishedGames.map((game) => {
-
         const homeDisplay = worldCupData
           ? getDisplayTeam(game, "home", worldCupData.teamMap)
           : { name: game.home_team_label ?? "Ev", flag: "" };
@@ -223,9 +291,6 @@ export function AdminPanel({
         const actionLabel =
           status?.settledPredictionCount ? "Yeniden Puanla" : "İşle";
 
-        const manualScore = getManualScore(game.id);
-        const hasManualOverride = manualScore.home !== "" || manualScore.away !== "";
-
         return (
           <View key={game.id} style={[styles.userLeagueCard, { flexDirection: "column", alignItems: "stretch", marginTop: 8 }]}>
             <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
@@ -235,19 +300,19 @@ export function AdminPanel({
                 </Text>
                 <Text style={styles.userLeagueMeta}>{game.local_date}</Text>
                 {status ? (
-                  <View style={styles.adminStatusRow}>
-                    <View style={styles.adminStatusChip}>
-                      <Text style={styles.adminStatusChipText}>
+                  <View style={[styles.adminStatusRow, { flexWrap: "nowrap" }]}>
+                    <View style={[styles.adminStatusChip, { paddingHorizontal: 6, paddingVertical: 3 }]}>
+                      <Text style={[styles.adminStatusChipText, { fontSize: 10 }]}>
                         Sorular • {status.questionCount}
                       </Text>
                     </View>
-                    <View style={styles.adminStatusChip}>
-                      <Text style={styles.adminStatusChipText}>
+                    <View style={[styles.adminStatusChip, { paddingHorizontal: 6, paddingVertical: 3 }]}>
+                      <Text style={[styles.adminStatusChipText, { fontSize: 10 }]}>
                         Bekleyen • {status.pendingPredictionCount}
                       </Text>
                     </View>
-                    <View style={styles.adminStatusChip}>
-                      <Text style={styles.adminStatusChipText}>
+                    <View style={[styles.adminStatusChip, { paddingHorizontal: 6, paddingVertical: 3 }]}>
+                      <Text style={[styles.adminStatusChipText, { fontSize: 10 }]}>
                         Puanlanan • {status.settledPredictionCount}
                       </Text>
                     </View>
@@ -286,33 +351,129 @@ export function AdminPanel({
               )}
             </View>
 
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 }}>
-              <TextInput
-                value={manualScore.home}
-                onChangeText={(v) => setManualScore(game.id, "home", v.replace(/[^0-9]/g, ""))}
-                placeholder="Ev golü"
-                placeholderTextColor={theme.muted}
-                keyboardType="numeric"
-                maxLength={2}
-                style={[styles.authInput, { flex: 1, textAlign: "center", paddingVertical: 6 }]}
-              />
-              <Text style={[styles.userLeagueMeta, { paddingHorizontal: 2 }]}>–</Text>
-              <TextInput
-                value={manualScore.away}
-                onChangeText={(v) => setManualScore(game.id, "away", v.replace(/[^0-9]/g, ""))}
-                placeholder="Dep golü"
-                placeholderTextColor={theme.muted}
-                keyboardType="numeric"
-                maxLength={2}
-                style={[styles.authInput, { flex: 1, textAlign: "center", paddingVertical: 6 }]}
-              />
-              <Text style={[styles.userLeagueMeta, { flex: 2, color: hasManualOverride ? theme.accent : theme.muted }]}>
-                {hasManualOverride ? "Manuel skor aktif" : "Opsiyonel skor düzelt"}
-              </Text>
-            </View>
+            {status?.hasResult ? (
+              <Pressable
+                onPress={() => handleOpenAnswerOverride(game)}
+                style={[styles.authModeButton, { marginTop: 10, paddingVertical: 8 }]}
+              >
+                <Text style={styles.authModeText}>Cevapları Düzenle</Text>
+              </Pressable>
+            ) : null}
           </View>
         );
       })}
+
+      {/* Cevap Düzenleme Modal */}
+      <Modal
+        visible={overrideGame !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setOverrideGame(null)}
+      >
+        <View style={styles.modalBackdrop}>
+        <View style={styles.predictionModal}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderTextWrap}>
+              <Text style={styles.modalEyebrow}>Admin — Cevap Düzenle</Text>
+              <Text style={styles.modalTitle}>
+                {overrideHomeTeam} – {overrideAwayTeam}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setOverrideGame(null)}
+              style={styles.modalCloseButton}
+            >
+              <MaterialCommunityIcons name="close" size={22} color={theme.ink} />
+            </Pressable>
+          </View>
+
+          {overrideLoading ? (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <ActivityIndicator color={theme.accent} />
+              <Text style={[styles.loadingCopy, { marginTop: 8 }]}>Sorular yükleniyor…</Text>
+            </View>
+          ) : (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <View style={[styles.modalMatchCard, { marginBottom: 4 }]}>
+                <Text style={styles.modalMatchMeta}>
+                  API'den yanlış gelen cevapları düzeltebilirsin. Değiştirdiğin cevaplar override olarak kaydedilir ve puanlama buna göre yapılır.
+                </Text>
+              </View>
+
+              {overrideQuestions.map((question) => {
+                const isOverridden = overrideAnswers[question.id] !== undefined &&
+                  overrideAnswers[question.id] !== overrideComputedAnswers[question.id];
+                return (
+                  <View key={question.id} style={styles.modalQuestionCard}>
+                    <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                      <Text style={styles.modalQuestionPrompt}>
+                        {question.prompt}
+                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        {isOverridden ? (
+                          <View style={[styles.modalPointsBadge, { backgroundColor: "#f59e0b" }]}>
+                            <Text style={[styles.modalPointsBadgeText, { color: "#fff" }]}>✏️ düzeltildi</Text>
+                          </View>
+                        ) : null}
+                        <View style={styles.modalPointsBadge}>
+                          <Text style={styles.modalPointsBadgeText}>{question.points}p</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={styles.modalOptionsWrap}>
+                      {question.options.map((option) => {
+                        const isSelected = overrideAnswers[question.id] === option;
+                        return (
+                          <Pressable
+                            key={option}
+                            onPress={() =>
+                              setOverrideAnswers((prev) => ({ ...prev, [question.id]: option }))
+                            }
+                            style={[
+                              styles.modalOptionButton,
+                              isSelected && styles.modalOptionButtonActive,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.modalOptionText,
+                                isSelected && styles.modalOptionTextActive,
+                              ]}
+                            >
+                              {option}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+
+              {overrideError ? (
+                <Text style={styles.authError}>{overrideError}</Text>
+              ) : null}
+
+              <Pressable
+                onPress={handleSaveOverrides}
+                disabled={overrideSaving}
+                style={[styles.modalSubmitButton, overrideSaving && { opacity: 0.6 }]}
+              >
+                {overrideSaving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.modalSubmitButtonText}>Kaydet</Text>
+                )}
+              </Pressable>
+            </ScrollView>
+          )}
+        </View>
+        </View>
+      </Modal>
     </View>
   );
 }
