@@ -56,7 +56,13 @@ function applyMultiplier(
   return questions.map((q) => ({ ...q, points: q.points * multiplier }));
 }
 
-// --- Klasik sorular: her maçta bulunur, tümü final skor ile cevaplanır ---
+const KNOCKOUT_STAGES = new Set(["r32", "r16", "qf", "sf", "final", "third"]);
+
+export function isKnockoutStage(stage?: string): boolean {
+  return !!stage && KNOCKOUT_STAGES.has(stage);
+}
+
+// --- Klasik sorular: grup aşaması ---
 
 function buildClassicQuestions(
   homeTeamName: string,
@@ -98,6 +104,52 @@ function buildClassicQuestions(
       prompt: "Gol farkı kaç olur?",
       options: ["0 (Beraberlik)", "1", "2", "3+"],
       points: 8,
+    },
+  ];
+}
+
+// --- Klasik sorular: eleme turu (Beraberlik yok, uzatma/penaltı soruları var) ---
+
+function buildKnockoutClassicQuestions(
+  homeTeamName: string,
+  awayTeamName: string,
+): MatchQuestion[] {
+  return [
+    {
+      id: "match-result",
+      prompt: "Turu geçen takım kim olur?",
+      options: [homeTeamName, awayTeamName],
+      points: 6,
+    },
+    {
+      id: "match-end-type",
+      prompt: "Maç nasıl biter?",
+      options: ["90 dakikada", "Uzatmada", "Penaltılarda"],
+      points: 10,
+    },
+    {
+      id: "home-goals",
+      prompt: `${homeTeamName} kaç gol atar? (uzatmalar dahil)`,
+      options: ["0", "1", "2", "3+"],
+      points: 7,
+    },
+    {
+      id: "away-goals",
+      prompt: `${awayTeamName} kaç gol atar? (uzatmalar dahil)`,
+      options: ["0", "1", "2", "3+"],
+      points: 7,
+    },
+    {
+      id: "both-score",
+      prompt: "Her iki takım da gol atar mı? (uzatmalar dahil)",
+      options: ["Evet", "Hayır"],
+      points: 6,
+    },
+    {
+      id: "goes-to-penalties",
+      prompt: "Maç penaltılara gider mi?",
+      options: ["Gider", "Gitmez"],
+      points: 9,
     },
   ];
 }
@@ -226,15 +278,26 @@ const QUESTION_POOL: MatchQuestion[] = [
   },
 ];
 
+// Eleme turuna özel havuz: most-goals-half (AET ile karışır), goal-diff (Beraberlik seçeneği),
+// first-sub-minute (61-90 cap AET'te geçersiz) hariç tutulur.
+const KNOCKOUT_QUESTION_POOL: MatchQuestion[] = QUESTION_POOL.filter(
+  (q) => !["most-goals-half", "goal-diff", "first-sub-minute", "nil-nil"].includes(q.id),
+);
+
 // --- Ana fonksiyon ---
 
 export function buildMatchQuestions(
   matchId: string,
   homeTeamName: string,
   awayTeamName: string,
+  stage?: string,
 ): MatchQuestion[] {
-  const classic = buildClassicQuestions(homeTeamName, awayTeamName);
-  const poolPicks = pickFromPool(matchId, QUESTION_POOL, 3).map((q) => {
+  const knockout = isKnockoutStage(stage);
+  const classic = knockout
+    ? buildKnockoutClassicQuestions(homeTeamName, awayTeamName)
+    : buildClassicQuestions(homeTeamName, awayTeamName);
+  const pool = knockout ? KNOCKOUT_QUESTION_POOL : QUESTION_POOL;
+  const poolPicks = pickFromPool(matchId, pool, 3).map((q) => {
     if (q.id === "first-goal-team") {
       return { ...q, options: [homeTeamName, awayTeamName, "Gol olmaz"] };
     }
@@ -243,6 +306,9 @@ export function buildMatchQuestions(
     }
     if (q.id === "shots-winner" || q.id === "possession-winner") {
       return { ...q, options: [homeTeamName, awayTeamName, "Eşit"] };
+    }
+    if (knockout && (q.id === "total-exact" || q.id === "four-plus-goals" || q.id === "both-score-2plus" || q.id === "clean-sheet" || q.id === "one-goal-diff" || q.id === "over-25")) {
+      return { ...q, prompt: q.prompt + " (uzatmalar dahil)" };
     }
     return q;
   });

@@ -43,7 +43,10 @@ export function buildMatchResultFromGame(
   let winner: string;
   if (home > away) winner = homeDisplayName;
   else if (away > home) winner = awayDisplayName;
-  else winner = "Beraberlik";
+  else if (game.penalties_home !== undefined && game.penalties_away !== undefined) {
+    // Penaltı atışı sonucu (beraberlik sonrası)
+    winner = game.penalties_home > game.penalties_away ? homeDisplayName : awayDisplayName;
+  } else winner = "Beraberlik";
 
   const homeScorers = parseScorers(game.home_scorers ?? "");
   const awayScorers = parseScorers(game.away_scorers ?? "");
@@ -62,12 +65,15 @@ export function buildMatchResultFromGame(
     awayScore: away,
     winner,
     bothTeamsScore: home > 0 && away > 0,
-    redCard: false,
+    redCard: game.red_card ?? false,
     firstGoalTeam: firstGoal ? firstGoal.team : "none",
     firstGoalMinute: firstGoal?.minute ?? null,
     halfTimeHomeGoals,
     halfTimeAwayGoals,
     firstHalfGoals: halfTimeHomeGoals + halfTimeAwayGoals,
+    extraTime: game.extra_time ?? false,
+    penaltiesHome: game.penalties_home,
+    penaltiesAway: game.penalties_away,
     resolvedAt: new Date().toISOString(),
   };
 }
@@ -85,6 +91,8 @@ export function getCorrectAnswer(
     case "match-result":
       if (h > a) return homeTeamName;
       if (a > h) return awayTeamName;
+      // Uzatma/penaltı sonucu: winner penaltı galibini tutar, "Beraberlik" değilse kullan
+      if (result.winner && result.winner !== "Beraberlik") return result.winner;
       return "Beraberlik";
     case "home-goals":
       return h >= 3 ? "3+" : String(h);
@@ -230,6 +238,14 @@ export function getCorrectAnswer(
       if (fsm <= 60) return "46-60";
       return "61-90";
     }
+
+    // Eleme turu soruları
+    case "match-end-type":
+      if (result.penaltiesHome !== undefined) return "Penaltılarda";
+      if (result.extraTime) return "Uzatmada";
+      return "90 dakikada";
+    case "goes-to-penalties":
+      return result.penaltiesHome !== undefined ? "Gider" : "Gitmez";
 
     default:
       return null;

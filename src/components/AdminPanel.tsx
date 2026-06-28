@@ -39,7 +39,6 @@ export function AdminPanel({
   const [syncingFinished, setSyncingFinished] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [loadingStatuses, setLoadingStatuses] = useState(false);
-
   // Cevap düzenleme modal state
   const [overrideGame, setOverrideGame] = useState<ApiGame | null>(null);
   const [overrideQuestions, setOverrideQuestions] = useState<MatchQuestion[]>([]);

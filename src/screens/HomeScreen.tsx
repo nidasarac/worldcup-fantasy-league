@@ -197,7 +197,7 @@ export function HomeScreen({
     if (!selectedGame) return [];
     const home = getDisplayTeam(selectedGame, "home", data?.teamMap ?? {});
     const away = getDisplayTeam(selectedGame, "away", data?.teamMap ?? {});
-    return buildMatchQuestions(selectedGame.id, home.name, away.name);
+    return buildMatchQuestions(selectedGame.id, home.name, away.name, selectedGame.type);
   }, [selectedGame, data]);
 
   const modalPredictionState = useMemo(

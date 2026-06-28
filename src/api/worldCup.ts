@@ -195,6 +195,10 @@ export type ApiGame = {
   source?: string;
   stadiumName?: string;
   stadiumCity?: string;
+  red_card?: boolean;
+  extra_time?: boolean;
+  penalties_home?: number;
+  penalties_away?: number;
 };
 
 export type ApiTeam = {
@@ -233,17 +237,156 @@ export type ApiGroup = {
   teams: ApiGroupRow[];
 };
 
+type ZafronixGoal = {
+  minute: number;
+  team: "home" | "away";
+  scorer: string;
+  type?: "penalty" | "normal" | "own_goal";
+};
+
+type ZafronixCard = {
+  minute: number;
+  team: "home" | "away";
+  player: string;
+  color: "yellow" | "red";
+};
+
 type ZafronixMatch = {
   id: string;
   matchNo: number;
   kickoffUtc: string;
   stage: string;
-  homeTeam: string;
-  awayTeam: string;
+  homeTeam: string | null;
+  awayTeam: string | null;
+  homeRef?: string | null;
+  awayRef?: string | null;
   homeScore: number | null;
   awayScore: number | null;
   status: string | null;
+  goals?: ZafronixGoal[] | null;
+  cards?: ZafronixCard[] | null;
+  extraTime?: boolean;
+  penalties?: { home: number; away: number } | null;
 };
+
+// Zafronix goals dizisini "İsim dakika'" formatına çevir (takım bazında)
+function buildScorersString(goals: ZafronixGoal[], team: "home" | "away"): string {
+  return goals
+    .filter((g) => {
+      // Normal/penaltı gol: kendi takımına sayılır
+      if (g.type !== "own_goal") return g.team === team;
+      // Kendi kalesine gol: rakip takıma sayılır
+      return g.team !== team;
+    })
+    .map((g) => `${g.scorer} ${g.minute}'`)
+    .join(",");
+}
+
+type ZafronixStandingEntry = {
+  team: string;
+  position: number;
+  advanced?: boolean;
+};
+
+async function fetchZafronixStandings(): Promise<Record<string, ZafronixStandingEntry[]>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${ZAFRONIX_BASE_URL}/standings?year=2026`, {
+      signal: controller.signal,
+      headers: { "X-API-Key": getZafronixApiKey() },
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data.groups ?? {};
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function buildRefResolver(standings: Record<string, ZafronixStandingEntry[]>) {
+  const posMap: Record<string, string> = {};
+  const thirdAdvanced: { team: string; group: string }[] = [];
+
+  for (const [group, teams] of Object.entries(standings)) {
+    for (const t of teams) {
+      if (t.position === 1 || t.position === 2) posMap[`${t.position}${group}`] = t.team;
+      if (t.position === 3 && t.advanced) thirdAdvanced.push({ team: t.team, group });
+    }
+  }
+
+  // Constraint propagation: bir takım sadece tek slotta geçiyorsa oraya atanır,
+  // atanan takım diğer slotların aday listesinden çıkarılır. Tekrar edilir.
+  const allThirdRefs = [
+    "3ABCDF","3AEHIJ","3BEFIJ","3CDFGH","3CEFHI","3DEIJL","3EFGIJ","3EHIJK",
+  ];
+  const candidates: Record<string, { team: string; group: string }[]> = {};
+  for (const ref of allThirdRefs) {
+    const groups = new Set(ref.slice(1).split(""));
+    candidates[ref] = thirdAdvanced.filter((t) => groups.has(t.group));
+  }
+  const resolved: Record<string, string> = {};
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    // Slot→takım: slotun tek adayı varsa kesin ata
+    for (const ref of allThirdRefs) {
+      if (resolved[ref]) continue;
+      if (candidates[ref].length === 1) {
+        const winner = candidates[ref][0];
+        resolved[ref] = winner.team;
+        for (const other of allThirdRefs) {
+          if (other === ref) continue;
+          const before = candidates[other].length;
+          candidates[other] = candidates[other].filter((t) => t.team !== winner.team);
+          if (candidates[other].length !== before) changed = true;
+        }
+        changed = true;
+      }
+    }
+
+    // Takım→slot: bir takım sadece tek slotta geçiyorsa oraya ata
+    const teamToSlots: Record<string, string[]> = {};
+    for (const ref of allThirdRefs) {
+      if (resolved[ref]) continue;
+      for (const t of candidates[ref]) {
+        if (!teamToSlots[t.team]) teamToSlots[t.team] = [];
+        teamToSlots[t.team].push(ref);
+      }
+    }
+    for (const [team, slots] of Object.entries(teamToSlots)) {
+      if (slots.length === 1 && !resolved[slots[0]]) {
+        const ref = slots[0];
+        resolved[ref] = team;
+        for (const other of allThirdRefs) {
+          if (other === ref) continue;
+          const before = candidates[other].length;
+          candidates[other] = candidates[other].filter((t) => t.team !== team);
+          if (candidates[other].length !== before) changed = true;
+        }
+        changed = true;
+      }
+    }
+  }
+
+  return function resolveRef(ref: string | null | undefined): string | undefined {
+    if (!ref) return undefined;
+    // 1X / 2X — kesin
+    const teamEn = posMap[ref];
+    if (teamEn) return TEAM_NAME_TR_MAP[teamEn] ?? teamEn;
+    // 3XXXXX — önce constraint propagation ile çözülmüş mü bak
+    if (resolved[ref]) return TEAM_NAME_TR_MAP[resolved[ref]] ?? resolved[ref];
+    // Hâlâ belirsizse kalan adayları listele
+    const m = ref.match(/^3([A-L]+)$/);
+    if (m) {
+      const cands = candidates[ref];
+      if (cands.length === 0) return undefined;
+      return cands.map((c) => TEAM_NAME_TR_MAP[c.team] ?? c.team).join(" / ");
+    }
+    return undefined;
+  };
+}
 
 type FirestoreTestMatch = {
   source: "manual-test";
@@ -269,7 +412,10 @@ export type WorldCupData = {
   stadiumMap: Record<string, ApiStadium>;
 };
 
-function zafronixMatchToApiGame(match: ZafronixMatch): ApiGame {
+function zafronixMatchToApiGame(
+  match: ZafronixMatch,
+  resolveRef: (ref: string | null | undefined) => string | undefined = () => undefined
+): ApiGame {
   const { type, group } = parseZafronixStage(match.stage);
   const isFinished = match.status === "finished";
 
@@ -285,8 +431,8 @@ function zafronixMatchToApiGame(match: ZafronixMatch): ApiGame {
     away_team_id: "",
     home_score: isFinished ? String(match.homeScore ?? 0) : "0",
     away_score: isFinished ? String(match.awayScore ?? 0) : "0",
-    home_scorers: "",
-    away_scorers: "",
+    home_scorers: isFinished && match.goals ? buildScorersString(match.goals, "home") : "",
+    away_scorers: isFinished && match.goals ? buildScorersString(match.goals, "away") : "",
     group,
     matchday: String(match.matchNo ?? ""),
     local_date: localDate,
@@ -295,30 +441,47 @@ function zafronixMatchToApiGame(match: ZafronixMatch): ApiGame {
     finished: isFinished ? "TRUE" : "FALSE",
     time_elapsed: isFinished ? "finished" : "notstarted",
     type,
-    home_team_label: TEAM_NAME_TR_MAP[match.homeTeam] ?? match.homeTeam ?? "TBD",
-    away_team_label: TEAM_NAME_TR_MAP[match.awayTeam] ?? match.awayTeam ?? "TBD",
-    home_team_name_en: match.homeTeam,
-    away_team_name_en: match.awayTeam,
+    home_team_label: (match.homeTeam ? (TEAM_NAME_TR_MAP[match.homeTeam] ?? match.homeTeam) : undefined) ?? resolveRef(match.homeRef) ?? "TBD",
+    away_team_label: (match.awayTeam ? (TEAM_NAME_TR_MAP[match.awayTeam] ?? match.awayTeam) : undefined) ?? resolveRef(match.awayRef) ?? "TBD",
+    home_team_name_en: match.homeTeam ?? undefined,
+    away_team_name_en: match.awayTeam ?? undefined,
     stadiumName: (match as any).stadium ?? undefined,
     stadiumCity: (match as any).city ?? undefined,
+    red_card: match.cards ? match.cards.some((c) => c.color === "red") : undefined,
+    extra_time: match.extraTime ?? false,
+    penalties_home: match.penalties?.home,
+    penalties_away: match.penalties?.away,
   };
 }
 
 async function fetchZafronixGames(): Promise<ApiGame[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${ZAFRONIX_BASE_URL}/matches?year=2026`, {
-      signal: controller.signal,
-      headers: { "X-API-Key": getZafronixApiKey() },
-    });
-    if (!res.ok) throw new Error(`Zafronix ${res.status}`);
-    const data = await res.json();
-    const matches: ZafronixMatch[] = data.data ?? [];
-    return matches.filter((m) => m.id && m.kickoffUtc).map(zafronixMatchToApiGame);
-  } finally {
-    clearTimeout(timer);
-  }
+  const [matchesRes, standings] = await Promise.allSettled([
+    (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${ZAFRONIX_BASE_URL}/matches?year=2026`, {
+          signal: controller.signal,
+          headers: { "X-API-Key": getZafronixApiKey() },
+        });
+        if (!res.ok) throw new Error(`Zafronix ${res.status}`);
+        return await res.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    })(),
+    fetchZafronixStandings(),
+  ]);
+
+  if (matchesRes.status === "rejected") throw matchesRes.reason;
+
+  const resolveRef = buildRefResolver(
+    standings.status === "fulfilled" ? standings.value : {}
+  );
+  const matches: ZafronixMatch[] = matchesRes.value.data ?? [];
+  return matches
+    .filter((m) => m.id && m.kickoffUtc)
+    .map((m) => zafronixMatchToApiGame(m, resolveRef));
 }
 
 type FirestoreMatchDoc = {
@@ -339,12 +502,20 @@ type FirestoreMatchDoc = {
 
 const FIRESTORE_STAGE_MAP: Record<string, string> = {
   GROUP_STAGE: "group",
+  group: "group",
   ROUND_OF_32: "r32",
+  r32: "r32",
   ROUND_OF_16: "r16",
+  r16: "r16",
   QUARTER_FINALS: "qf",
+  qf: "qf",
   SEMI_FINALS: "sf",
+  sf: "sf",
   FINAL: "final",
+  final: "final",
   THIRD_PLACE: "third",
+  thirdPlace: "third",
+  third: "third",
 };
 
 function firestoreMatchToApiGame(docId: string, data: FirestoreMatchDoc): ApiGame {
@@ -480,24 +651,37 @@ function computeGroupStandings(games: ApiGame[]): ApiGroup[] {
 }
 
 export async function fetchWorldCupData(): Promise<WorldCupData> {
-  const [firestoreResult, manualTestGames] = await Promise.allSettled([
+  const [firestoreResult, zafronixResult, manualTestGames] = await Promise.allSettled([
     fetchFirestoreGames(),
+    fetchZafronixGames(),
     fetchManualTestGames(),
   ]);
 
   const manualGames = manualTestGames.status === "fulfilled" ? manualTestGames.value : [];
-  let apiGames = firestoreResult.status === "fulfilled" ? firestoreResult.value : [];
+  const firestoreGames = firestoreResult.status === "fulfilled" ? firestoreResult.value : [];
+  const zafronixGames = zafronixResult.status === "fulfilled" ? zafronixResult.value : [];
 
-  // Firestore henüz dolu değilse (ilk kurulum) Zafronix'e fallback
-  if (apiGames.length === 0) {
-    try {
-      apiGames = await fetchZafronixGames();
-    } catch {
-      // fallback da başarısız olduysa devam et
-    }
+  // Firestore birincil kaynak; takım adı TBD ise Zafronix'ten doldur
+  const zafronixById = new Map(zafronixGames.map((g) => [g.id, g]));
+  const mergedFirestoreGames = firestoreGames.map((game) => {
+    const zGame = zafronixById.get(game.id);
+    if (!zGame) return game;
+    const homeLabel = game.home_team_label && game.home_team_label !== "TBD"
+      ? game.home_team_label : (zGame.home_team_label ?? game.home_team_label);
+    const awayLabel = game.away_team_label && game.away_team_label !== "TBD"
+      ? game.away_team_label : (zGame.away_team_label ?? game.away_team_label);
+    return { ...game, home_team_label: homeLabel, away_team_label: awayLabel };
+  });
+  const mergedIds = new Set(mergedFirestoreGames.map((g) => g.id));
+  const supplementalGames = zafronixGames.filter((g) => !mergedIds.has(g.id));
+  const apiGames = [...mergedFirestoreGames, ...supplementalGames];
+
+  if (apiGames.length === 0 && zafronixGames.length === 0) {
+    throw new Error("Maç verisi alınamadı. Lütfen daha sonra tekrar deneyin.");
   }
 
-  const games = [...apiGames, ...manualGames];
+  // Hiçbir kaynaktan veri gelemediyse Zafronix tek başına kullanılsın
+  const games = [...(apiGames.length > 0 ? apiGames : zafronixGames), ...manualGames];
 
   if (games.length === 0) {
     throw new Error("Maç verisi alınamadı. Lütfen daha sonra tekrar deneyin.");

@@ -55,12 +55,14 @@ function buildQuestionsForAdmin(params: {
   matchId: string;
   homeTeamName: string;
   awayTeamName: string;
+  stage?: string;
   includeStats: boolean;
 }) {
   const generated = buildMatchQuestions(
     params.matchId,
     params.homeTeamName,
     params.awayTeamName,
+    params.stage,
   );
 
   if (params.includeStats) {
@@ -130,6 +132,7 @@ export async function syncMatchQuestionsByAdmin(params: {
     matchId: params.game.id,
     homeTeamName: home.name,
     awayTeamName: away.name,
+    stage: params.game.type,
     includeStats: true,
   });
 

@@ -82,6 +82,9 @@ export type MatchResult = {
   homeFouls?: number | null;
   awayFouls?: number | null;
   firstSubMinute?: number | null;
+  extraTime?: boolean;
+  penaltiesHome?: number;
+  penaltiesAway?: number;
   manualAnswerOverrides?: Record<string, string>;
 };
 
