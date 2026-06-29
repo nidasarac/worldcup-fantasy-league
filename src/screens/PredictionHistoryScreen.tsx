@@ -149,11 +149,29 @@ export function PredictionHistoryScreen({
 
       const fallbackQuestions =
         home && away
-          ? buildMatchQuestions(prediction.matchId, home.name, away.name)
+          ? buildMatchQuestions(prediction.matchId, home.name, away.name, game?.type)
           : [];
 
+      // Firestore'daki sorularda TBD takım adı varsa gerçek isimle değiştir
+      const fixTbdOptions = <T extends { options: string[] }>(questions: T[]): T[] => {
+        if (!home || !away) return questions;
+        return questions.map((q) => {
+          if (!q.options.includes("TBD")) return q;
+          let homeCount = 0;
+          const fixedOptions = q.options.map((opt) => {
+            if (opt !== "TBD") return opt;
+            return homeCount++ === 0 ? home.name : away.name;
+          });
+          return { ...q, options: fixedOptions };
+        });
+      };
+
       setHistoryAnswers(answers);
-      setHistoryQuestions(storedQuestions.length ? storedQuestions : fallbackQuestions);
+      if (storedQuestions.length) {
+        setHistoryQuestions(fixTbdOptions(storedQuestions));
+      } else {
+        setHistoryQuestions(fixTbdOptions(fallbackQuestions));
+      }
       setHistoryResult(result);
     } catch (error) {
       setHistoryError(
@@ -376,7 +394,12 @@ export function PredictionHistoryScreen({
                 !historyError &&
                 historyQuestions.map((question) => {
                   const answer = historyAnswers.find((item) => item.id === question.id);
-                  const selectedValue = answer?.selectedValue ?? null;
+                  // Tahmin esnasında takım adı TBD ise ve şu an tek bir olası eşleşme varsa
+                  // (örn. cevap "TBD" ama opsiyonlarda artık "Güney Afrika" yazıyor), belirsiz bırak
+                  const rawSelected = answer?.selectedValue ?? null;
+                  const selectedValue = rawSelected === "TBD"
+                    ? null  // hangi TBD'yi seçtiği bilinmiyor — belirsiz göster
+                    : rawSelected;
                   const correctValue =
                     historyResult && selectedHistoryHome && selectedHistoryAway
                       ? (historyResult.manualAnswerOverrides?.[question.id] ??
