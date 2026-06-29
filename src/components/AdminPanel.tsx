@@ -10,6 +10,7 @@ import {
   getAdminMatchStatus,
   settleMatchViaCloudFunction,
   syncFinishedMatchesByAdmin,
+  syncMatchQuestionsByAdmin,
 } from "../services/admin";
 import { MatchQuestion } from "../services/questions";
 import { getCorrectAnswer } from "../services/scoring";
@@ -90,6 +91,10 @@ export function AdminPanel({
     });
 
     try {
+      // Cloud function'dan önce soruları güncelle (eski grup soruları kalmış olabilir)
+      if (worldCupData) {
+        await syncMatchQuestionsByAdmin({ game, worldCupData });
+      }
       const { settledCount } = await settleMatchViaCloudFunction(game.id);
       setMatchState(game.id, {
         status: "done",

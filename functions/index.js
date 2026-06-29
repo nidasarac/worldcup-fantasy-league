@@ -166,8 +166,14 @@ function buildMatchResultFromZafronix(match, homeDisplayName, awayDisplayName) {
   const substitutions = match.substitutions || [];
   const firstSubMinute = substitutions.length > 0 ? (substitutions[0].minute ?? null) : null;
 
+  const extraTime = match.extraTime ?? false;
+  const penaltiesHome = match.penaltiesHome ?? match.penalties?.home ?? null;
+  const penaltiesAway = match.penaltiesAway ?? match.penalties?.away ?? null;
+
   let winner;
-  if (h > a) winner = homeDisplayName;
+  if (penaltiesHome != null && penaltiesAway != null) {
+    winner = penaltiesHome > penaltiesAway ? homeDisplayName : awayDisplayName;
+  } else if (h > a) winner = homeDisplayName;
   else if (a > h) winner = awayDisplayName;
   else winner = "Beraberlik";
 
@@ -175,6 +181,9 @@ function buildMatchResultFromZafronix(match, homeDisplayName, awayDisplayName) {
     homeScore: h,
     awayScore: a,
     winner,
+    extraTime,
+    penaltiesHome,
+    penaltiesAway,
     bothTeamsScore: h > 0 && a > 0,
     redCard: homeRedCards + awayRedCards > 0,
     homeYellowCards,
@@ -282,9 +291,18 @@ function getCorrectAnswer(questionId, result, homeTeamName, awayTeamName) {
   const a = result.awayScore;
   switch (questionId) {
     case "match-result":
+      if (result.penaltiesHome !== undefined) {
+        return result.penaltiesHome > result.penaltiesAway ? homeTeamName : awayTeamName;
+      }
       if (h > a) return homeTeamName;
       if (a > h) return awayTeamName;
       return "Beraberlik";
+    case "match-end-type":
+      if (result.penaltiesHome != null) return "Penaltılarda";
+      if (result.extraTime) return "Uzatmada";
+      return "90 dakikada";
+    case "goes-to-penalties":
+      return result.penaltiesHome != null ? "Gider" : "Gitmez";
     case "home-goals":
       return h >= 3 ? "3+" : String(h);
     case "away-goals":

@@ -192,7 +192,9 @@ export async function settleMatchByAdmin(params: {
     collection(db, "matches", params.game.id, "questions"),
   );
 
-  if (existingQuestions.empty) {
+  const KNOCKOUT_STAGES = new Set(["r32", "r16", "qf", "sf", "final", "third"]);
+  // Eleme maçlarında her zaman soruları yenile — eski grup soruları kalmış olabilir
+  if (existingQuestions.empty || KNOCKOUT_STAGES.has(params.game.type)) {
     await syncMatchQuestionsByAdmin(params);
   }
 

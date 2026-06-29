@@ -72,8 +72,8 @@ export function buildMatchResultFromGame(
     halfTimeAwayGoals,
     firstHalfGoals: halfTimeHomeGoals + halfTimeAwayGoals,
     extraTime: game.extra_time ?? false,
-    penaltiesHome: game.penalties_home,
-    penaltiesAway: game.penalties_away,
+    penaltiesHome: game.penalties_home ?? null,
+    penaltiesAway: game.penalties_away ?? null,
     resolvedAt: new Date().toISOString(),
   };
 }
@@ -241,11 +241,11 @@ export function getCorrectAnswer(
 
     // Eleme turu soruları
     case "match-end-type":
-      if (result.penaltiesHome !== undefined) return "Penaltılarda";
+      if (result.penaltiesHome != null) return "Penaltılarda";
       if (result.extraTime) return "Uzatmada";
       return "90 dakikada";
     case "goes-to-penalties":
-      return result.penaltiesHome !== undefined ? "Gider" : "Gitmez";
+      return result.penaltiesHome != null ? "Gider" : "Gitmez";
 
     default:
       return null;

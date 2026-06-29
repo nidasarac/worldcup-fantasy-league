@@ -152,25 +152,37 @@ export function PredictionHistoryScreen({
           ? buildMatchQuestions(prediction.matchId, home.name, away.name, game?.type)
           : [];
 
-      // Firestore'daki sorularda TBD takım adı varsa gerçek isimle değiştir
-      const fixTbdOptions = <T extends { options: string[] }>(questions: T[]): T[] => {
+      // Firestore'daki sorularda TBD takım adı varsa gerçek isimle değiştir (options + prompt)
+      const fixTbd = <T extends { options: string[]; prompt?: string; label?: string }>(questions: T[]): T[] => {
         if (!home || !away) return questions;
         return questions.map((q) => {
-          if (!q.options.includes("TBD")) return q;
+          const hasTbdOption = q.options.includes("TBD");
+          const promptKey = "prompt" in q ? "prompt" : "label";
+          const promptVal: string = (q as any)[promptKey] ?? "";
+          const hasTbdPrompt = promptVal.includes("TBD");
+          if (!hasTbdOption && !hasTbdPrompt) return q;
+
           let homeCount = 0;
           const fixedOptions = q.options.map((opt) => {
             if (opt !== "TBD") return opt;
             return homeCount++ === 0 ? home.name : away.name;
           });
-          return { ...q, options: fixedOptions };
+
+          // Prompt'taki TBD'leri sırayla home/away ile değiştir
+          let phCount = 0;
+          const fixedPrompt = promptVal.replace(/TBD/g, () =>
+            phCount++ === 0 ? home.name : away.name
+          );
+
+          return { ...q, options: fixedOptions, [promptKey]: fixedPrompt };
         });
       };
 
       setHistoryAnswers(answers);
       if (storedQuestions.length) {
-        setHistoryQuestions(fixTbdOptions(storedQuestions));
+        setHistoryQuestions(fixTbd(storedQuestions));
       } else {
-        setHistoryQuestions(fixTbdOptions(fallbackQuestions));
+        setHistoryQuestions(fixTbd(fallbackQuestions));
       }
       setHistoryResult(result);
     } catch (error) {
